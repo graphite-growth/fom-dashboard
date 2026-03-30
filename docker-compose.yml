@@ -1,0 +1,52 @@
+services:
+  nginx-proxy:
+    build:
+      context: proxy
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+  frontend:
+    image: frontend
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    environment:
+      - AUTH_URL=${AUTH_URL}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+    ports:
+      - "3000:3000"
+    entrypoint: [ "bun", "./server.js" ]
+  backend:
+    image: backend
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    environment:
+      - AUTH_URL=${AUTH_URL}
+      - AUTH_SECRET=${AUTH_SECRET}
+      - ALLOWED_DOMAIN=${ALLOWED_DOMAIN}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - DEV_AUTH=${DEV_AUTH:-false}
+      - SUPERMETRICS_API_KEY=${SUPERMETRICS_API_KEY}
+
+      - DB_PASS=${DB_PASS}
+      - DB_USER=${DB_USER}
+      - DB_NAME=${DB_NAME}
+      - DB_PORT=${DB_PORT}
+      - DB_HOST=${DB_HOST}
+    
+    ports:
+      - "8000:8000"
+    entrypoint: [ "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000" ]
+  
+  db:
+    image: postgres:alpine
+    profiles:
+      - local
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "${DB_PORT}:5432"
+  

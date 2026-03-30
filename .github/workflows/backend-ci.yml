@@ -1,0 +1,67 @@
+
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+  workflow_call:
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_CLIENT_ID: test
+      GOOGLE_CLIENT_SECRET: test
+      AUTH_URL: http://localhost:3000
+      AUTH_SECRET: test-secret-key-for-jwt
+      ALLOWED_DOMAIN: graphitehq.com
+
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: uv run mypy .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_CLIENT_ID: test
+      GOOGLE_CLIENT_SECRET: test
+      AUTH_URL: http://localhost:3000
+      AUTH_SECRET: test-secret-key-for-jwt
+      ALLOWED_DOMAIN: graphitehq.com
+
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync
+      - run: uv run pytest -n auto --timeout=30 -v
+

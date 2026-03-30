@@ -1,0 +1,25 @@
+{
+  "template": "/Users/carlosromero/Documents/code/fom/quick-app-template",
+  "commit": "77dfd3134b1bf5303dc0b24cbbbe41ef83476e3f",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "github_username": "ocampor-gr",
+      "github_branch": "master",
+      "app_name": "FOM Dashboard",
+      "include_database": "no",
+      "include_custom_domain": "no",
+      "domain_name": "example.com",
+      "subdomain": "",
+      "pypi_package_name": "fom-dashboard",
+      "project_slug": "fom_dashboard",
+      "eb_app_name": "fom-dashboard",
+      "eb_environment": "fom-dashboard",
+      "project_short_description": "Python Boilerplate contains all the boilerplate you need to create an App.",
+      "__gh_slug": "ocampor-gr/fom_dashboard",
+      "_template": "/Users/carlosromero/Documents/code/fom/quick-app-template",
+      "_commit": "77dfd3134b1bf5303dc0b24cbbbe41ef83476e3f"
+    }
+  },
+  "directory": null
+}

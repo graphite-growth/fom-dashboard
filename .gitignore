@@ -1,0 +1,9 @@
+.idea
+.terraform/
+*.tfstate
+*.tfstate.backup
+terraform.tfvars
+*.tfplan
+.env
+.env.local
+.env.production

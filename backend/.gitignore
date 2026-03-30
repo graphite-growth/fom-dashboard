@@ -1,0 +1,46 @@
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Byte-code files
+__pycache__/
+*.pyc
+
+# Editor/OS specific files
+.DS_Store
+.vscode/
+*.swp
+
+# Logs and temporary files
+*.log
+tmp/
+
+# Database files (if using SQLite or similar)
+*.db
+*.sqlite3
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Test reports
+.pytest_cache/
+htmlcov/
+
+# Python-specific ignore rules
+*.mypy_cache/
+.pytest_cache/
+
+# FastAPI specific (if any)
+# You might add specific generated files or directories here
+# For example, if you generate client code or documentation into a specific folder
+# client_generated_code/
+# docs_output/

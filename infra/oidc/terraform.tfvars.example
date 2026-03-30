@@ -1,0 +1,5 @@
+github_repo = "owner/repo-name"
+
+# region          = "us-east-2"
+# project_name    = "fom-dashboard"
+# tf_state_bucket = ""  # leave empty to create a new S3 bucket for Terraform state

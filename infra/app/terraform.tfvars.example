@@ -1,0 +1,13 @@
+vpc_id            = "vpc-xxxxxxxxxxxxxxxxx"
+app_subnet_ids    = ["subnet-xxxxxxxxxxxxxxxxx", "subnet-xxxxxxxxxxxxxxxxx"]
+security_group_id = "sg-xxxxxxxxxxxxxxxxx"
+
+google_client_id     = "your-google-client-id"
+google_client_secret = "your-google-client-secret"
+# instance_type       = "t4g.small"
+# allowed_domain      = "graphitehq.com"
+# solution_stack_name = "64bit Amazon Linux 2023 running Docker"
+
+# app_version_label and tf_state_bucket are set by deploy.sh, do not set manually
+
+
