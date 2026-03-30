@@ -1,13 +1,16 @@
 import { BACKEND_URL } from "./config";
 import type { DashboardData } from "./dashboard-data";
 
+const AUTH_SECRET = process.env.AUTH_SECRET || "";
+
 export async function fetchDashboardData(
   cookieHeader: string
 ): Promise<DashboardData> {
-  const url = `${BACKEND_URL}/dashboard`;
-  console.log("[fetchDashboard] fetching", url);
+  const url = `${BACKEND_URL}/dashboard/internal`;
   const response = await fetch(url, {
-    headers: { cookie: cookieHeader },
+    headers: {
+      "x-internal-secret": AUTH_SECRET,
+    },
   });
   if (!response.ok) {
     throw new Error(`Dashboard API returned HTTP ${response.status}`);
