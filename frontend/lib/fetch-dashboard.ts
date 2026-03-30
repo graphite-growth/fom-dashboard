@@ -4,7 +4,9 @@ import type { DashboardData } from "./dashboard-data";
 export async function fetchDashboardData(
   cookieHeader: string
 ): Promise<DashboardData> {
-  const response = await fetch(`${BACKEND_URL}/dashboard`, {
+  const url = `${BACKEND_URL}/dashboard`;
+  console.log("[fetchDashboard] fetching", url);
+  const response = await fetch(url, {
     headers: { cookie: cookieHeader },
   });
   if (!response.ok) {

@@ -1,4 +1,4 @@
-import { BACKEND_URL } from "./config";
+import * as jose from "jose";
 
 export interface User {
   name: string;
@@ -6,22 +6,25 @@ export interface User {
   image: string;
 }
 
+const AUTH_SECRET = process.env.AUTH_SECRET || "";
+
 export async function getUser(cookieHeader: string): Promise<User | null> {
-  const url = `${BACKEND_URL}/auth/me`;
+  // Extract session_token from cookie header
+  const match = cookieHeader.match(/session_token=([^;]+)/);
+  if (!match) return null;
+
   try {
-    console.log("[getUser] fetching", url);
-    const response = await fetch(url, {
-      headers: { cookie: cookieHeader },
+    const secret = new TextEncoder().encode(AUTH_SECRET);
+    const { payload } = await jose.jwtVerify(match[1], secret, {
+      algorithms: ["HS256"],
     });
-    console.log("[getUser] status", response.status);
-    if (!response.ok) {
-      const body = await response.text();
-      console.log("[getUser] error body", body);
-      return null;
-    }
-    return (await response.json()) as User;
+    return {
+      name: (payload.name as string) || "",
+      email: (payload.email as string) || "",
+      image: (payload.picture as string) || "",
+    };
   } catch (e) {
-    console.log("[getUser] exception", e);
+    console.log("[getUser] JWT verify failed", e);
     return null;
   }
 }
