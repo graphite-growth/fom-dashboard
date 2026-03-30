@@ -19,25 +19,33 @@ YOUTUBE_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCjoo243IaOdidaL8SA7_
 DASHBOARD_BUDGET = float(os.environ.get("DASHBOARD_BUDGET", "2500"))
 DASHBOARD_FLIGHT_START = os.environ.get("DASHBOARD_FLIGHT_START", "2026-03-24")
 DASHBOARD_FLIGHT_END = os.environ.get("DASHBOARD_FLIGHT_END", "2026-04-30")
-SUBSCRIBER_HISTORY_PATH = Path(os.environ.get("SUBSCRIBER_HISTORY_PATH", "./subscriber_history.json"))
 
 # Simple TTL cache
 _cache: dict[str, Any] | None = None
 _cache_time: float = 0
 CACHE_TTL = 900  # 15 minutes
 
+# In-memory subscriber history (serverless filesystem is read-only)
+_subscriber_history: list[dict[str, Any]] | None = None
 
 SUBSCRIBER_SEED = [{"date": "2026-03-24", "subscribers": 46}]
 
 
 def _load_subscriber_history() -> list[dict[str, Any]]:
-    """Load subscriber history from JSON file, seeding if empty."""
-    if SUBSCRIBER_HISTORY_PATH.exists():
+    """Load subscriber history from memory, seeding if empty."""
+    global _subscriber_history
+    if _subscriber_history is not None:
+        return _subscriber_history
+    # Try loading from filesystem (works in local dev, not on Vercel)
+    history_path = Path(os.environ.get("SUBSCRIBER_HISTORY_PATH", "./subscriber_history.json"))
+    if history_path.exists():
         try:
-            return json.loads(SUBSCRIBER_HISTORY_PATH.read_text())
+            _subscriber_history = json.loads(history_path.read_text())
+            return _subscriber_history
         except (json.JSONDecodeError, OSError):
-            logger.error("Failed to read subscriber history, starting fresh")
-    return list(SUBSCRIBER_SEED)
+            logger.warning("Failed to read subscriber history, using seed data")
+    _subscriber_history = list(SUBSCRIBER_SEED)
+    return _subscriber_history
 
 
 def _save_subscriber_snapshot(date: str, subscribers: int) -> list[dict[str, Any]]:
@@ -47,12 +55,14 @@ def _save_subscriber_snapshot(date: str, subscribers: int) -> list[dict[str, Any
     if date not in existing_dates and subscribers > 0:
         history.append({"date": date, "subscribers": subscribers})
         history.sort(key=lambda x: x["date"])
+        # Try filesystem write (works locally, gracefully fails on Vercel)
+        history_path = Path(os.environ.get("SUBSCRIBER_HISTORY_PATH", "./subscriber_history.json"))
         try:
-            SUBSCRIBER_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-            SUBSCRIBER_HISTORY_PATH.write_text(json.dumps(history, indent=2))
+            history_path.parent.mkdir(parents=True, exist_ok=True)
+            history_path.write_text(json.dumps(history, indent=2))
             logger.info("Saved subscriber snapshot: %s = %d", date, subscribers)
         except OSError:
-            logger.error("Failed to write subscriber history")
+            logger.info("Filesystem read-only, subscriber snapshot kept in memory only")
     return history
 
 
@@ -122,6 +132,48 @@ def _match_engagement(video_name: str, ytpd_data: list[dict]) -> tuple[int, int]
     if row is None:
         return 0, 0
     return int(row.get("Likes", 0)), int(row.get("Comments", 0))
+
+
+DEVICE_LABELS = {
+    "Mobile devices with full browsers": "Mobile",
+    "Tablets with full browsers": "Tablet",
+    "Computers": "Desktop",
+    "Devices streaming video content to TV screens": "TV",
+}
+
+
+def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | None = None) -> list[dict]:
+    """Convert raw demographic rows into sorted [{label, views, cost, impressions, pctOfViews}]."""
+    total_views = sum(int(r.get("Video views", 0)) for r in rows)
+    result = []
+    for r in rows:
+        raw_label = r.get(label_key, "Unknown")
+        label = label_map.get(raw_label, raw_label) if label_map else raw_label
+        views = int(r.get("Video views", 0))
+        result.append({
+            "label": label,
+            "views": views,
+            "cost": round(float(r.get("Cost (USD)", 0)), 2),
+            "impressions": int(r.get("Impressions", 0)),
+            "pctOfViews": round(views / total_views, 4) if total_views > 0 else 0,
+        })
+    result.sort(key=lambda x: x["views"], reverse=True)
+    return result
+
+
+def _transform_demographics(
+    age_rows: list[dict],
+    gender_rows: list[dict],
+    device_rows: list[dict],
+    geo_rows: list[dict],
+) -> dict[str, list[dict]]:
+    """Transform raw demographic data into structured format."""
+    return {
+        "age": _build_demographic_rows(age_rows, "Age"),
+        "gender": _build_demographic_rows(gender_rows, "Gender"),
+        "device": _build_demographic_rows(device_rows, "Device", DEVICE_LABELS),
+        "geo": _build_demographic_rows(geo_rows, "Country"),
+    }
 
 
 def _transform(
@@ -357,12 +409,58 @@ async def get_dashboard_data() -> dict[str, Any]:
         },
     )
 
+    # Fetch demographics (4 separate queries — different report types)
+    age_raw = await supermetrics.query(
+        api_key=SUPERMETRICS_API_KEY,
+        ds_id="AW",
+        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+        fields="Age,videoviews,Cost_usd,Impressions",
+        date_range_type="custom",
+        start_date=DASHBOARD_FLIGHT_START,
+        end_date=today,
+    )
+    gender_raw = await supermetrics.query(
+        api_key=SUPERMETRICS_API_KEY,
+        ds_id="AW",
+        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+        fields="Gender,videoviews,Cost_usd,Impressions",
+        date_range_type="custom",
+        start_date=DASHBOARD_FLIGHT_START,
+        end_date=today,
+    )
+    device_raw = await supermetrics.query(
+        api_key=SUPERMETRICS_API_KEY,
+        ds_id="AW",
+        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+        fields="Device,videoviews,Cost_usd,Impressions",
+        date_range_type="custom",
+        start_date=DASHBOARD_FLIGHT_START,
+        end_date=today,
+    )
+    geo_raw = await supermetrics.query(
+        api_key=SUPERMETRICS_API_KEY,
+        ds_id="AW",
+        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+        fields="Country,videoviews,Cost_usd,Impressions",
+        date_range_type="custom",
+        start_date=DASHBOARD_FLIGHT_START,
+        end_date=today,
+    )
+
     ads_rows = _rows_to_dicts(ads_rows_raw)
     ads_daily_rows = _rows_to_dicts(ads_daily_raw)
     ytpd_rows = _rows_to_dicts(ytpd_rows_raw)
     channel_stats = _rows_to_dicts(channel_stats_raw)
 
+    demographics = _transform_demographics(
+        _rows_to_dicts(age_raw),
+        _rows_to_dicts(gender_raw),
+        _rows_to_dicts(device_raw),
+        _rows_to_dicts(geo_raw),
+    )
+
     result = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats)
+    result["demographics"] = demographics
 
     _cache = result
     _cache_time = now

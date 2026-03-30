@@ -39,6 +39,21 @@ export interface SubscriberSnapshot {
   subscribers: number;
 }
 
+export interface DemographicRow {
+  label: string;
+  views: number;
+  cost: number;
+  impressions: number;
+  pctOfViews: number;
+}
+
+export interface Demographics {
+  age: DemographicRow[];
+  gender: DemographicRow[];
+  device: DemographicRow[];
+  geo: DemographicRow[];
+}
+
 export interface DashboardData {
   budget: number;
   flightStart: string;
@@ -52,4 +67,5 @@ export interface DashboardData {
   projectedPaidViews?: number;
   projectedPublicViews?: number;
   subscriberHistory?: SubscriberSnapshot[];
+  demographics?: Demographics;
 }

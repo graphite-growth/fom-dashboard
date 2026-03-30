@@ -134,6 +134,48 @@ def _match_engagement(video_name: str, ytpd_data: list[dict]) -> tuple[int, int]
     return int(row.get("Likes", 0)), int(row.get("Comments", 0))
 
 
+DEVICE_LABELS = {
+    "Mobile devices with full browsers": "Mobile",
+    "Tablets with full browsers": "Tablet",
+    "Computers": "Desktop",
+    "Devices streaming video content to TV screens": "TV",
+}
+
+
+def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | None = None) -> list[dict]:
+    """Convert raw demographic rows into sorted [{label, views, cost, impressions, pctOfViews}]."""
+    total_views = sum(int(r.get("Video views", 0)) for r in rows)
+    result = []
+    for r in rows:
+        raw_label = r.get(label_key, "Unknown")
+        label = label_map.get(raw_label, raw_label) if label_map else raw_label
+        views = int(r.get("Video views", 0))
+        result.append({
+            "label": label,
+            "views": views,
+            "cost": round(float(r.get("Cost (USD)", 0)), 2),
+            "impressions": int(r.get("Impressions", 0)),
+            "pctOfViews": round(views / total_views, 4) if total_views > 0 else 0,
+        })
+    result.sort(key=lambda x: x["views"], reverse=True)
+    return result
+
+
+def _transform_demographics(
+    age_rows: list[dict],
+    gender_rows: list[dict],
+    device_rows: list[dict],
+    geo_rows: list[dict],
+) -> dict[str, list[dict]]:
+    """Transform raw demographic data into structured format."""
+    return {
+        "age": _build_demographic_rows(age_rows, "Age"),
+        "gender": _build_demographic_rows(gender_rows, "Gender"),
+        "device": _build_demographic_rows(device_rows, "Device", DEVICE_LABELS),
+        "geo": _build_demographic_rows(geo_rows, "Country"),
+    }
+
+
 def _transform(
     ads_rows: list[dict],
     ads_daily_rows: list[dict],
@@ -367,12 +409,58 @@ async def get_dashboard_data() -> dict[str, Any]:
         },
     )
 
+    # Fetch demographics (4 separate queries — different report types)
+    age_raw = await supermetrics.query(
+        api_key=SUPERMETRICS_API_KEY,
+        ds_id="AW",
+        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+        fields="Age,videoviews,Cost_usd,Impressions",
+        date_range_type="custom",
+        start_date=DASHBOARD_FLIGHT_START,
+        end_date=today,
+    )
+    gender_raw = await supermetrics.query(
+        api_key=SUPERMETRICS_API_KEY,
+        ds_id="AW",
+        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+        fields="Gender,videoviews,Cost_usd,Impressions",
+        date_range_type="custom",
+        start_date=DASHBOARD_FLIGHT_START,
+        end_date=today,
+    )
+    device_raw = await supermetrics.query(
+        api_key=SUPERMETRICS_API_KEY,
+        ds_id="AW",
+        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+        fields="Device,videoviews,Cost_usd,Impressions",
+        date_range_type="custom",
+        start_date=DASHBOARD_FLIGHT_START,
+        end_date=today,
+    )
+    geo_raw = await supermetrics.query(
+        api_key=SUPERMETRICS_API_KEY,
+        ds_id="AW",
+        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+        fields="Country,videoviews,Cost_usd,Impressions",
+        date_range_type="custom",
+        start_date=DASHBOARD_FLIGHT_START,
+        end_date=today,
+    )
+
     ads_rows = _rows_to_dicts(ads_rows_raw)
     ads_daily_rows = _rows_to_dicts(ads_daily_raw)
     ytpd_rows = _rows_to_dicts(ytpd_rows_raw)
     channel_stats = _rows_to_dicts(channel_stats_raw)
 
+    demographics = _transform_demographics(
+        _rows_to_dicts(age_raw),
+        _rows_to_dicts(gender_raw),
+        _rows_to_dicts(device_raw),
+        _rows_to_dicts(geo_raw),
+    )
+
     result = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats)
+    result["demographics"] = demographics
 
     _cache = result
     _cache_time = now

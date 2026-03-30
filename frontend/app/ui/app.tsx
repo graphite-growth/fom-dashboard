@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { DashboardData, Video } from "@/lib/dashboard-data";
+import type { DashboardData, DemographicRow, Video } from "@/lib/dashboard-data";
 import { DailyChart } from "@/components/daily-chart";
 import { SubscribersChart } from "@/components/subscribers-chart";
 
@@ -531,6 +531,46 @@ export default function App({
               </div>
             </CardContent>
           </Card>
+
+          {/* Demographics */}
+          {D.demographics && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {(
+                [
+                  ["Age", D.demographics.age],
+                  ["Gender", D.demographics.gender],
+                  ["Device", D.demographics.device],
+                  ["Geography", D.demographics.geo],
+                ] as [string, DemographicRow[]][]
+              ).map(([title, rows]) => (
+                <Card key={title}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                      {title}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2.5">
+                    {rows.map((row) => (
+                      <div key={row.label} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-foreground">{row.label}</span>
+                          <span className="text-muted-foreground">
+                            {fmt(row.views)} views · {pct(row.pctOfViews)}
+                          </span>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted/30 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-emerald-400/70"
+                            style={{ width: `${Math.max(row.pctOfViews * 100, 1)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
 
           {/* Footer */}
           <p className="text-center text-[10px] text-muted-foreground/40 py-4">
