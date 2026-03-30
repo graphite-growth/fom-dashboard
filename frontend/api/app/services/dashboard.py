@@ -281,27 +281,17 @@ def _transform(
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     subscriber_history = _save_subscriber_snapshot(today, subscribers)
 
-    # Projections
-    flight_start = datetime.strptime(DASHBOARD_FLIGHT_START, "%Y-%m-%d")
-    flight_end = datetime.strptime(DASHBOARD_FLIGHT_END, "%Y-%m-%d")
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    total_days = max(1, (flight_end - flight_start).days)
-    days_elapsed = max(1, (now - flight_start).days)
-    days_remaining = max(0, total_days - days_elapsed)
-
+    # Projections: budget / CPV = projected views
     total_paid_views = sum(v["views"] for v in videos)
+    total_cost = sum(v["cost"] for v in videos)
     total_public_views = sum(v.get("publicViews", 0) for v in videos)
 
-    projected_paid_views = (
-        round(total_paid_views + (total_paid_views / days_elapsed) * days_remaining)
-        if days_remaining > 0
-        else total_paid_views
-    )
-    projected_public_views = (
-        round(total_public_views + (total_public_views / days_elapsed) * days_remaining)
-        if days_remaining > 0
-        else total_public_views
-    )
+    avg_cpv = total_cost / total_paid_views if total_paid_views > 0 else 0.03
+    projected_paid_views = round(DASHBOARD_BUDGET / avg_cpv) if avg_cpv > 0 else 0
+
+    # Project public views at the same ratio as current organic/paid
+    organic_ratio = total_public_views / total_paid_views if total_paid_views > 0 else 1.0
+    projected_public_views = round(projected_paid_views * organic_ratio)
 
     return {
         "budget": DASHBOARD_BUDGET,
