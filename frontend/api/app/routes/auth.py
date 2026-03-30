@@ -44,16 +44,11 @@ async def callback(request: Request) -> RedirectResponse:
         return RedirectResponse("/login?error=domain_not_allowed")
 
     jwt_token = create_token(dict(user_info))
-    response = RedirectResponse("/app")
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=jwt_token,
-        httponly=True,
-        samesite="lax",
-        secure=os.environ.get("AUTH_URL", "").startswith("https"),
-        path="/",
-    )
-    return response
+    # Redirect to Next.js route handler to set cookie (Vercel Python functions
+    # don't reliably forward Set-Cookie headers on redirects)
+    from urllib.parse import urlencode
+    params = urlencode({"token": jwt_token})
+    return RedirectResponse(f"/api/auth/set-session?{params}")
 
 
 @router.get("/logout")
