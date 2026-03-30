@@ -186,12 +186,12 @@ export default function App({
     let statusClass: string;
     let statusMsg: string;
     let statusDetail: string;
-    if (paceRatio >= 0.85 && paceRatio <= 1.15) {
+    if (paceRatio >= 0.80 && paceRatio <= 1.20) {
       statusClass =
         "bg-emerald-400/8 border-emerald-400/20 text-emerald-400";
       statusMsg = `On track — projected ${fmt(projectedPublicViews)} public views by Apr 30`;
       statusDetail = `${fmt(daysRemaining)} days left · ${usd(neededDailySpend)}/day needed`;
-    } else if (paceRatio < 0.85) {
+    } else if (paceRatio < 0.80) {
       statusClass = "bg-amber-400/8 border-amber-400/20 text-amber-400";
       statusMsg = `Underpacing — increase daily budget to ${usd(neededDailySpend)}/day`;
       statusDetail = `${fmt(daysRemaining)} days left · Currently spending ${usd(dailySpendRate)}/day`;
