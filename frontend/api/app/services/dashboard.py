@@ -172,7 +172,7 @@ def _transform_demographics(
         "age": _build_demographic_rows(age_rows, "Age"),
         "gender": _build_demographic_rows(gender_rows, "Gender"),
         "device": _build_demographic_rows(device_rows, "Device", DEVICE_LABELS),
-        "geo": _build_demographic_rows(geo_rows, "Country"),
+        "geo": _build_demographic_rows(geo_rows, "Metro area"),
     }
 
 
@@ -441,7 +441,7 @@ async def get_dashboard_data() -> dict[str, Any]:
         api_key=SUPERMETRICS_API_KEY,
         ds_id="AW",
         ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Country,videoviews,Cost_usd,Impressions",
+        fields="Metroarea,videoviews,Cost_usd,Impressions",
         date_range_type="custom",
         start_date=DASHBOARD_FLIGHT_START,
         end_date=today,

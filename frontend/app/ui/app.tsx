@@ -540,7 +540,7 @@ export default function App({
                   ["Age", D.demographics.age],
                   ["Gender", D.demographics.gender],
                   ["Device", D.demographics.device],
-                  ["Geography", D.demographics.geo],
+                  ["DMA Region", D.demographics.geo],
                 ] as [string, DemographicRow[]][]
               ).map(([title, rows]) => (
                 <Card key={title}>
