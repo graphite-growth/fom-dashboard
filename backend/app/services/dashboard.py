@@ -28,8 +28,17 @@ CACHE_TTL = 900  # 15 minutes
 # In-memory subscriber history (serverless filesystem is read-only)
 _subscriber_history: list[dict[str, Any]] | None = None
 
-SUBSCRIBER_SEED = [{"date": "2026-03-24", "subscribers": 46}]
-
+SUBSCRIBER_SEED = [
+      {"date": "2026-03-24", "subscribers": 46},
+      {"date": "2026-03-25", "subscribers": 47},
+      {"date": "2026-03-26", "subscribers": 47},
+      {"date": "2026-03-27", "subscribers": 48},
+      {"date": "2026-03-28", "subscribers": 49},
+      {"date": "2026-03-29", "subscribers": 49},
+      {"date": "2026-03-30", "subscribers": 50},
+      {"date": "2026-03-31", "subscribers": 51},
+      {"date": "2026-04-01", "subscribers": 52},
+  ]
 
 def _load_subscriber_history() -> list[dict[str, Any]]:
     """Load subscriber history from memory, seeding if empty."""
