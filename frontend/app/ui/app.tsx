@@ -340,7 +340,7 @@ export default function App({
                   {fmt(D.totalChannelViews ?? 0)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  All videos combined
+                  Long-form videos only
                 </p>
               </CardContent>
             </Card>

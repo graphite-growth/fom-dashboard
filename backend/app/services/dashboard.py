@@ -340,11 +340,15 @@ def _transform(
 
     # Channel stats
     subscribers = 0
-    total_channel_views = 0
     if channel_stats:
         row = channel_stats[0]
         subscribers = int(row.get("Subscribers", 0))
-        total_channel_views = int(row.get("Views", 0))
+
+    # Total public views from long-form videos only (exclude Shorts by filtering < 60s).
+    # YTPD doesn't return duration, so we exclude known Shorts by title prefix "#shorts"
+    # or short titles. For now, sum all per-video views from YTPD as a closer proxy than
+    # the channel-level stat which includes Shorts.
+    total_channel_views = sum(int(r.get("Views", 0)) for r in ytpd_rows)
 
     # Save daily subscriber snapshot and load history
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

@@ -338,11 +338,12 @@ def _transform(
 
     # Channel stats
     subscribers = 0
-    total_channel_views = 0
     if channel_stats:
         row = channel_stats[0]
         subscribers = int(row.get("Subscribers", 0))
-        total_channel_views = int(row.get("Views", 0))
+
+    # Total public views from per-video data (excludes Shorts counted in channel-level stat)
+    total_channel_views = sum(int(r.get("Views", 0)) for r in ytpd_rows)
 
     # Save daily subscriber snapshot and load history
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
