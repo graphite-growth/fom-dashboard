@@ -29,16 +29,17 @@ CACHE_TTL = 900  # 15 minutes
 _subscriber_history: list[dict[str, Any]] | None = None
 
 SUBSCRIBER_SEED = [
-      {"date": "2026-03-24", "subscribers": 46},
-      {"date": "2026-03-25", "subscribers": 47},
-      {"date": "2026-03-26", "subscribers": 47},
-      {"date": "2026-03-27", "subscribers": 48},
-      {"date": "2026-03-28", "subscribers": 49},
-      {"date": "2026-03-29", "subscribers": 49},
-      {"date": "2026-03-30", "subscribers": 50},
-      {"date": "2026-03-31", "subscribers": 51},
-      {"date": "2026-04-01", "subscribers": 52},
-  ]
+    {"date": "2026-03-24", "subscribers": 46},
+    {"date": "2026-03-25", "subscribers": 47},
+    {"date": "2026-03-26", "subscribers": 47},
+    {"date": "2026-03-27", "subscribers": 48},
+    {"date": "2026-03-28", "subscribers": 49},
+    {"date": "2026-03-29", "subscribers": 49},
+    {"date": "2026-03-30", "subscribers": 50},
+    {"date": "2026-03-31", "subscribers": 51},
+    {"date": "2026-04-01", "subscribers": 52},
+]
+
 
 def _load_subscriber_history() -> list[dict[str, Any]]:
     """Load subscriber history from memory, seeding if empty."""
@@ -96,9 +97,24 @@ def _extract_parts(ad_name: str) -> tuple[str, str]:
 STOP_WORDS = {"fom", "-", "the", "a", "an", "and", "or", "in", "of", "to", "with", "ag1", "ag2", "ag3"}
 TITLE_STOP_WORDS = {"the", "a", "an", "and", "or", "in", "of", "to", "with"}
 
+# Manual overrides for ads that can't be matched by name.
+# Maps lowercase display name → substring to find in YouTube video title.
+MANUAL_TITLE_MATCHES: dict[str, str] = {
+    "intro": "why authenticity beats automati",
+}
+
 
 def _match_ytpd_row(video_name: str, ytpd_data: list[dict]) -> dict | None:
     """Match a Google Ads ad name to a YouTube public data row by guest or company name."""
+    # 0. Check manual overrides by display name
+    _, display = video_name.split(" - ", 1) if " - " in video_name else ("", video_name)
+    title_substr = MANUAL_TITLE_MATCHES.get(display.strip().lower())
+    if title_substr:
+        for yt_row in ytpd_data:
+            title = yt_row.get("Video title", "").lower()
+            if title_substr in title:
+                return yt_row
+
     company, guest = _extract_parts(video_name)
 
     # 1. Try matching guest name in YouTube title
@@ -159,13 +175,15 @@ def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | 
         raw_label = r.get(label_key, "Unknown")
         label = label_map.get(raw_label, raw_label) if label_map else raw_label
         views = int(r.get("Video views", 0))
-        result.append({
-            "label": label,
-            "views": views,
-            "cost": round(float(r.get("Cost (USD)", 0)), 2),
-            "impressions": int(r.get("Impressions", 0)),
-            "pctOfViews": round(views / total_views, 4) if total_views > 0 else 0,
-        })
+        result.append(
+            {
+                "label": label,
+                "views": views,
+                "cost": round(float(r.get("Cost (USD)", 0)), 2),
+                "impressions": int(r.get("Impressions", 0)),
+                "pctOfViews": round(views / total_views, 4) if total_views > 0 else 0,
+            }
+        )
     result.sort(key=lambda x: x["views"], reverse=True)
     return result
 
