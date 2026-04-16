@@ -117,9 +117,10 @@ def _extract_parts(ad_name: str) -> tuple[str, str]:
 # Ad group display name mapping — cleans inconsistent Google Ads names for the dashboard.
 AD_GROUP_DISPLAY_NAMES: dict[str, str] = {
     "Ad Group 1: Company Size + Marketing Interests": "Company Size + Interests",
-    "FOM - Video Views - Channel Premium Whitelist": "Channel Premium Whitelist",
+    "Ad Group 2: Channel Premium Whitelist": "Channel Premium Whitelist",
     "Ad Group 3: Custom Intent Search Behavior": "Custom Intent Search",
     "AG4 - Retargeting": "Retargeting Website Visitors",
+    "AG4 - Retargeting graphite.io visitors": "Retargeting Website Visitors",
     "AG5 - Retargeting 50% viewers": "Retargeting 50% Viewers",
 }
 
