@@ -34,9 +34,9 @@ async def _get_data() -> JSONResponse:
     try:
         data = await get_dashboard_data()
         return JSONResponse(content=data)
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to fetch dashboard data")
         return JSONResponse(
-            content={"error": "Failed to fetch dashboard data"},
+            content={"error": f"Failed to fetch dashboard data: {exc}"},
             status_code=503,
         )
