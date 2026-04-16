@@ -166,12 +166,7 @@ export default function App({
     const dailySpendRate = totalSpend / daysElapsed;
     const neededDailySpend =
       daysRemaining > 0 ? (D.budget - totalSpend) / daysRemaining : 0;
-    const projectedPublicViews =
-      daysRemaining > 0
-        ? Math.round(
-            totalPublicViews + (totalPublicViews / daysElapsed) * daysRemaining
-          )
-        : totalPublicViews;
+    const projectedPaidViews = D.projectedPaidViews ?? 0;
 
     const paceRatio = expectedPacePct > 0 ? budgetPct / expectedPacePct : 1;
     const bestVideo = D.videos.reduce(
@@ -189,7 +184,7 @@ export default function App({
     if (paceRatio >= 0.80 && paceRatio <= 1.20) {
       statusClass =
         "bg-emerald-400/8 border-emerald-400/20 text-emerald-400";
-      statusMsg = `On track — projected ${fmt(projectedPublicViews)} public views by Apr 30`;
+      statusMsg = `On track — projected ${fmt(projectedPaidViews)} paid views by Apr 30`;
       statusDetail = `${fmt(daysRemaining)} days left · ${usd(neededDailySpend)}/day needed`;
     } else if (paceRatio < 0.80) {
       statusClass = "bg-amber-400/8 border-amber-400/20 text-amber-400";
@@ -352,7 +347,7 @@ export default function App({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tabular-nums">
-                  ~{fmt(D.projectedPaidViews ?? 0)}
+                  ~{fmt(projectedPaidViews)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Projection by {new Date(D.flightEnd + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} at current pace
