@@ -11,8 +11,12 @@ export default function AppWithData({ user }: { user: User }) {
 
   useEffect(() => {
     fetch("/api/v1/dashboard")
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          const detail = body?.error || `HTTP ${res.status}`;
+          throw new Error(detail);
+        }
         return res.json();
       })
       .then(setData)
