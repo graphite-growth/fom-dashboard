@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +56,26 @@ def _load_subscriber_history() -> list[dict[str, Any]]:
             logger.warning("Failed to read subscriber history, using seed data")
     _subscriber_history = list(SUBSCRIBER_SEED)
     return _subscriber_history
+
+
+def _interpolate_gaps(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fill date gaps in subscriber history with linear interpolation."""
+    if len(history) < 2:
+        return history
+    filled: list[dict[str, Any]] = [history[0]]
+    for i in range(1, len(history)):
+        prev_date = datetime.strptime(history[i - 1]["date"], "%Y-%m-%d")
+        curr_date = datetime.strptime(history[i]["date"], "%Y-%m-%d")
+        gap_days = (curr_date - prev_date).days
+        if gap_days > 1:
+            prev_subs = history[i - 1]["subscribers"]
+            curr_subs = history[i]["subscribers"]
+            for d in range(1, gap_days):
+                interp_date = prev_date + timedelta(days=d)
+                interp_subs = round(prev_subs + (curr_subs - prev_subs) * d / gap_days)
+                filled.append({"date": interp_date.strftime("%Y-%m-%d"), "subscribers": interp_subs})
+        filled.append(history[i])
+    return filled
 
 
 def _save_subscriber_snapshot(date: str, subscribers: int) -> list[dict[str, Any]]:
@@ -168,20 +188,32 @@ DEVICE_LABELS = {
 
 
 def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | None = None) -> list[dict]:
-    """Convert raw demographic rows into sorted [{label, views, cost, impressions, pctOfViews}]."""
-    total_views = sum(int(r.get("Video views", 0)) for r in rows)
-    result = []
+    """Convert raw demographic rows into sorted [{label, views, cost, impressions, pctOfViews}].
+
+    Aggregates by label first — Google Ads returns per-campaign breakdowns.
+    """
+    # Aggregate by label
+    agg: dict[str, dict[str, float]] = {}
     for r in rows:
         raw_label = r.get(label_key, "Unknown")
         label = label_map.get(raw_label, raw_label) if label_map else raw_label
-        views = int(r.get("Video views", 0))
-        result.append({
+        if label not in agg:
+            agg[label] = {"views": 0, "cost": 0.0, "impressions": 0}
+        agg[label]["views"] += int(r.get("Video views", 0))
+        agg[label]["cost"] += float(r.get("Cost (USD)", 0))
+        agg[label]["impressions"] += int(r.get("Impressions", 0))
+
+    total_views = sum(d["views"] for d in agg.values())
+    result = [
+        {
             "label": label,
-            "views": views,
-            "cost": round(float(r.get("Cost (USD)", 0)), 2),
-            "impressions": int(r.get("Impressions", 0)),
-            "pctOfViews": round(views / total_views, 4) if total_views > 0 else 0,
-        })
+            "views": int(d["views"]),
+            "cost": round(d["cost"], 2),
+            "impressions": int(d["impressions"]),
+            "pctOfViews": round(d["views"] / total_views, 4) if total_views > 0 else 0,
+        }
+        for label, d in agg.items()
+    ]
     result.sort(key=lambda x: x["views"], reverse=True)
     return result
 
@@ -347,7 +379,7 @@ def _transform(
 
     # Save daily subscriber snapshot and load history
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    subscriber_history = _save_subscriber_snapshot(today, subscribers)
+    subscriber_history = _interpolate_gaps(_save_subscriber_snapshot(today, subscribers))
 
     # Projections: budget / CPV = projected views
     total_paid_views = sum(v["views"] for v in videos)
