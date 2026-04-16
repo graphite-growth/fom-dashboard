@@ -90,7 +90,7 @@ function VideoRow({ video, isBest }: { video: Video; isBest: boolean }) {
         </td>
       </tr>
       {expanded &&
-        video.adGroups.map((ag) => (
+        [...video.adGroups].sort((a, b) => b.views - a.views).map((ag) => (
           <tr
             key={ag.name}
             className="hover:bg-muted/20"
