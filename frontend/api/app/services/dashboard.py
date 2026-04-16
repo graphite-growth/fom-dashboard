@@ -1,5 +1,6 @@
 """Dashboard data service — fetches from Supermetrics, transforms, and caches."""
 
+import asyncio
 import json
 import logging
 import os
@@ -391,86 +392,89 @@ async def get_dashboard_data() -> dict[str, Any]:
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Fetch Google Ads campaign/adgroup data
-    ads_rows_raw = await supermetrics.query(
-        api_key=SUPERMETRICS_API_KEY,
-        ds_id="AW",
-        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Campaignname,Adgroupname,Imageadname,videoviews,Cost_usd,CostPerVideoView,Impressions,videoviewrate,VideoQuartile25Rate,VideoQuartile50Rate,VideoQuartile75Rate,VideoQuartile100Rate",
-        date_range_type="custom",
-        start_date=DASHBOARD_FLIGHT_START,
-        end_date=today,
-    )
-
-    # Fetch Google Ads daily breakdown
-    ads_daily_raw = await supermetrics.query(
-        api_key=SUPERMETRICS_API_KEY,
-        ds_id="AW",
-        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Date,videoviews,Cost_usd,Impressions",
-        date_range_type="custom",
-        start_date=DASHBOARD_FLIGHT_START,
-        end_date=today,
-    )
-
-    # Fetch YouTube public data (per-video)
-    ytpd_rows_raw = await supermetrics.query(
-        api_key=SUPERMETRICS_API_KEY,
-        ds_id="YTPD",
-        fields="channel__videos__details__video_title,channel__videos__details__views,channel__videos__details__likes,channel__videos__details__comments",
-        settings={
-            "report_type": "channel",
-            "YOUTUBE_CHANNEL_ID": YOUTUBE_CHANNEL_ID,
-        },
-    )
-
-    # Fetch YouTube channel stats (subscribers + total views)
-    channel_stats_raw = await supermetrics.query(
-        api_key=SUPERMETRICS_API_KEY,
-        ds_id="YTPD",
-        fields="channels__subscribers,channels__views",
-        settings={
-            "report_type": "channels",
-            "YOUTUBE_CHANNEL_ID": YOUTUBE_CHANNEL_ID,
-        },
-    )
-
-    # Fetch demographics (4 separate queries — different report types)
-    age_raw = await supermetrics.query(
-        api_key=SUPERMETRICS_API_KEY,
-        ds_id="AW",
-        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Age,videoviews,Cost_usd,Impressions",
-        date_range_type="custom",
-        start_date=DASHBOARD_FLIGHT_START,
-        end_date=today,
-    )
-    gender_raw = await supermetrics.query(
-        api_key=SUPERMETRICS_API_KEY,
-        ds_id="AW",
-        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Gender,videoviews,Cost_usd,Impressions",
-        date_range_type="custom",
-        start_date=DASHBOARD_FLIGHT_START,
-        end_date=today,
-    )
-    device_raw = await supermetrics.query(
-        api_key=SUPERMETRICS_API_KEY,
-        ds_id="AW",
-        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Device,videoviews,Cost_usd,Impressions",
-        date_range_type="custom",
-        start_date=DASHBOARD_FLIGHT_START,
-        end_date=today,
-    )
-    geo_raw = await supermetrics.query(
-        api_key=SUPERMETRICS_API_KEY,
-        ds_id="AW",
-        ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Metroarea,videoviews,Cost_usd,Impressions",
-        date_range_type="custom",
-        start_date=DASHBOARD_FLIGHT_START,
-        end_date=today,
+    # Fetch all Supermetrics data in parallel to stay within Vercel's function timeout
+    (
+        ads_rows_raw,
+        ads_daily_raw,
+        ytpd_rows_raw,
+        channel_stats_raw,
+        age_raw,
+        gender_raw,
+        device_raw,
+        geo_raw,
+    ) = await asyncio.gather(
+        supermetrics.query(
+            api_key=SUPERMETRICS_API_KEY,
+            ds_id="AW",
+            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+            fields="Campaignname,Adgroupname,Imageadname,videoviews,Cost_usd,CostPerVideoView,Impressions,videoviewrate,VideoQuartile25Rate,VideoQuartile50Rate,VideoQuartile75Rate,VideoQuartile100Rate",
+            date_range_type="custom",
+            start_date=DASHBOARD_FLIGHT_START,
+            end_date=today,
+        ),
+        supermetrics.query(
+            api_key=SUPERMETRICS_API_KEY,
+            ds_id="AW",
+            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+            fields="Date,videoviews,Cost_usd,Impressions",
+            date_range_type="custom",
+            start_date=DASHBOARD_FLIGHT_START,
+            end_date=today,
+        ),
+        supermetrics.query(
+            api_key=SUPERMETRICS_API_KEY,
+            ds_id="YTPD",
+            fields="channel__videos__details__video_title,channel__videos__details__views,channel__videos__details__likes,channel__videos__details__comments",
+            settings={
+                "report_type": "channel",
+                "YOUTUBE_CHANNEL_ID": YOUTUBE_CHANNEL_ID,
+            },
+        ),
+        supermetrics.query(
+            api_key=SUPERMETRICS_API_KEY,
+            ds_id="YTPD",
+            fields="channels__subscribers,channels__views",
+            settings={
+                "report_type": "channels",
+                "YOUTUBE_CHANNEL_ID": YOUTUBE_CHANNEL_ID,
+            },
+        ),
+        supermetrics.query(
+            api_key=SUPERMETRICS_API_KEY,
+            ds_id="AW",
+            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+            fields="Age,videoviews,Cost_usd,Impressions",
+            date_range_type="custom",
+            start_date=DASHBOARD_FLIGHT_START,
+            end_date=today,
+        ),
+        supermetrics.query(
+            api_key=SUPERMETRICS_API_KEY,
+            ds_id="AW",
+            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+            fields="Gender,videoviews,Cost_usd,Impressions",
+            date_range_type="custom",
+            start_date=DASHBOARD_FLIGHT_START,
+            end_date=today,
+        ),
+        supermetrics.query(
+            api_key=SUPERMETRICS_API_KEY,
+            ds_id="AW",
+            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+            fields="Device,videoviews,Cost_usd,Impressions",
+            date_range_type="custom",
+            start_date=DASHBOARD_FLIGHT_START,
+            end_date=today,
+        ),
+        supermetrics.query(
+            api_key=SUPERMETRICS_API_KEY,
+            ds_id="AW",
+            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
+            fields="Metroarea,videoviews,Cost_usd,Impressions",
+            date_range_type="custom",
+            start_date=DASHBOARD_FLIGHT_START,
+            end_date=today,
+        ),
     )
 
     ads_rows = _rows_to_dicts(ads_rows_raw)
