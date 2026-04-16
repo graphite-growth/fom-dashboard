@@ -114,6 +114,15 @@ def _extract_parts(ad_name: str) -> tuple[str, str]:
     return ad_name, ""
 
 
+# Ad group display name mapping — cleans inconsistent Google Ads names for the dashboard.
+AD_GROUP_DISPLAY_NAMES: dict[str, str] = {
+    "Ad Group 1: Company Size + Marketing Interests": "Company Size + Interests",
+    "FOM - Video Views - Channel Premium Whitelist": "Channel Premium Whitelist",
+    "Ad Group 3: Custom Intent Search Behavior": "Custom Intent Search",
+    "AG4 - Retargeting": "Retargeting Website Visitors",
+    "AG5 - Retargeting 50% viewers": "Retargeting 50% Viewers",
+}
+
 STOP_WORDS = {"fom", "-", "the", "a", "an", "and", "or", "in", "of", "to", "with", "ag1", "ag2", "ag3"}
 TITLE_STOP_WORDS = {"the", "a", "an", "and", "or", "in", "of", "to", "with"}
 
@@ -244,7 +253,8 @@ def _transform(
     episodes: dict[str, dict[str, Any]] = {}
     for row in ads_rows:
         ad_name = row.get("Image ad name", row.get("Ad name", ""))
-        adgroup = row.get("Ad group name", row.get("Ad group", "Unknown"))
+        adgroup_raw = row.get("Ad group name", row.get("Ad group", "Unknown"))
+        adgroup = AD_GROUP_DISPLAY_NAMES.get(adgroup_raw, adgroup_raw)
         views = int(row.get("Video views", 0))
         cost = float(row.get("Cost (USD)", row.get("Cost", 0)))
         impressions = int(row.get("Impressions", 0))
