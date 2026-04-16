@@ -332,12 +332,12 @@ export default function App({
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
-                  Total Channel Views
+                  Public Views
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tabular-nums">
-                  {fmt(D.totalChannelViews ?? 0)}
+                  {fmt(totalPublicViews)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Long-form videos only
@@ -362,7 +362,7 @@ export default function App({
           </div>
 
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
@@ -375,21 +375,6 @@ export default function App({
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {fmt(totalImpressions)} impressions
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
-                  Public Views
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold tabular-nums">
-                  {fmt(totalPublicViews)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Lifetime views on YouTube
                 </p>
               </CardContent>
             </Card>
