@@ -1,4 +1,4 @@
-"""Dashboard data service — fetches from Supermetrics, transforms, and caches."""
+"""Dashboard data service — fetches from Google Ads and YouTube APIs, transforms, and caches."""
 
 import asyncio
 import json
@@ -9,12 +9,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.services import supermetrics
+from app.services import google_ads, youtube
 
 logger = logging.getLogger(__name__)
 
 # Configuration with defaults
-SUPERMETRICS_API_KEY = os.environ.get("SUPERMETRICS_API_KEY", "")
 GOOGLE_ADS_ACCOUNT_ID = os.environ.get("GOOGLE_ADS_ACCOUNT_ID", "6759019449")
 YOUTUBE_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCjoo243IaOdidaL8SA7_-HQ")
 DASHBOARD_BUDGET = float(os.environ.get("DASHBOARD_BUDGET", "2500"))
@@ -379,7 +378,7 @@ def _transform(
 
 
 async def get_dashboard_data() -> dict[str, Any]:
-    """Fetch dashboard data from Supermetrics with caching."""
+    """Fetch dashboard data from Google Ads and YouTube APIs with caching."""
     global _cache, _cache_time
 
     now = time.time()
@@ -387,107 +386,34 @@ async def get_dashboard_data() -> dict[str, Any]:
         logger.info("Returning cached dashboard data")
         return _cache
 
-    if not SUPERMETRICS_API_KEY:
-        raise ValueError("SUPERMETRICS_API_KEY not configured")
-
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # Fetch all Supermetrics data in parallel to stay within Vercel's function timeout
-    (
-        ads_rows_raw,
-        ads_daily_raw,
-        ytpd_rows_raw,
-        channel_stats_raw,
-        age_raw,
-        gender_raw,
-        device_raw,
-        geo_raw,
-    ) = await asyncio.gather(
-        supermetrics.query(
-            api_key=SUPERMETRICS_API_KEY,
-            ds_id="AW",
-            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-            fields="Campaignname,Adgroupname,Imageadname,videoviews,Cost_usd,CostPerVideoView,Impressions,videoviewrate,VideoQuartile25Rate,VideoQuartile50Rate,VideoQuartile75Rate,VideoQuartile100Rate",
-            date_range_type="custom",
-            start_date=DASHBOARD_FLIGHT_START,
-            end_date=today,
-        ),
-        supermetrics.query(
-            api_key=SUPERMETRICS_API_KEY,
-            ds_id="AW",
-            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-            fields="Date,videoviews,Cost_usd,Impressions",
-            date_range_type="custom",
-            start_date=DASHBOARD_FLIGHT_START,
-            end_date=today,
-        ),
-        supermetrics.query(
-            api_key=SUPERMETRICS_API_KEY,
-            ds_id="YTPD",
-            fields="channel__videos__details__video_title,channel__videos__details__views,channel__videos__details__likes,channel__videos__details__comments",
-            settings={
-                "report_type": "channel",
-                "YOUTUBE_CHANNEL_ID": YOUTUBE_CHANNEL_ID,
-            },
-        ),
-        supermetrics.query(
-            api_key=SUPERMETRICS_API_KEY,
-            ds_id="YTPD",
-            fields="channels__subscribers,channels__views",
-            settings={
-                "report_type": "channels",
-                "YOUTUBE_CHANNEL_ID": YOUTUBE_CHANNEL_ID,
-            },
-        ),
-        supermetrics.query(
-            api_key=SUPERMETRICS_API_KEY,
-            ds_id="AW",
-            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-            fields="Age,videoviews,Cost_usd,Impressions",
-            date_range_type="custom",
-            start_date=DASHBOARD_FLIGHT_START,
-            end_date=today,
-        ),
-        supermetrics.query(
-            api_key=SUPERMETRICS_API_KEY,
-            ds_id="AW",
-            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-            fields="Gender,videoviews,Cost_usd,Impressions",
-            date_range_type="custom",
-            start_date=DASHBOARD_FLIGHT_START,
-            end_date=today,
-        ),
-        supermetrics.query(
-            api_key=SUPERMETRICS_API_KEY,
-            ds_id="AW",
-            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-            fields="Device,videoviews,Cost_usd,Impressions",
-            date_range_type="custom",
-            start_date=DASHBOARD_FLIGHT_START,
-            end_date=today,
-        ),
-        supermetrics.query(
-            api_key=SUPERMETRICS_API_KEY,
-            ds_id="AW",
-            ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-            fields="Metroarea,videoviews,Cost_usd,Impressions",
-            date_range_type="custom",
-            start_date=DASHBOARD_FLIGHT_START,
-            end_date=today,
-        ),
+    # Fetch all data in parallel from Google Ads REST API and YouTube Data API
+    results = await asyncio.gather(
+        google_ads.fetch_ad_performance(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
+        google_ads.fetch_daily_breakdown(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
+        youtube.fetch_channel_videos(YOUTUBE_CHANNEL_ID),
+        youtube.fetch_channel_stats(YOUTUBE_CHANNEL_ID),
+        google_ads.fetch_age_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
+        google_ads.fetch_gender_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
+        google_ads.fetch_device_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
+        google_ads.fetch_geo_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
+        return_exceptions=True,
     )
 
-    ads_rows = _rows_to_dicts(ads_rows_raw)
-    ads_daily_rows = _rows_to_dicts(ads_daily_raw)
-    ytpd_rows = _rows_to_dicts(ytpd_rows_raw)
-    channel_stats = _rows_to_dicts(channel_stats_raw)
+    # Unpack results, replacing exceptions with empty lists
+    unpacked: list[list[dict]] = []
+    labels = ["ads", "daily", "youtube_videos", "youtube_channel", "age", "gender", "device", "geo"]
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            logger.error("Query %s failed: %s", labels[i], r)
+            unpacked.append([])
+        else:
+            unpacked.append(r)
 
-    demographics = _transform_demographics(
-        _rows_to_dicts(age_raw),
-        _rows_to_dicts(gender_raw),
-        _rows_to_dicts(device_raw),
-        _rows_to_dicts(geo_raw),
-    )
+    ads_rows, ads_daily_rows, ytpd_rows, channel_stats, age_rows, gender_rows, device_rows, geo_rows = unpacked
+
+    demographics = _transform_demographics(age_rows, gender_rows, device_rows, geo_rows)
 
     result = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats)
     result["demographics"] = demographics
