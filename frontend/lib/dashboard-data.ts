@@ -54,6 +54,24 @@ export interface Demographics {
   geo: DemographicRow[];
 }
 
+export interface SubscribersDailyPoint {
+  date: string;
+  newSubs: number;
+  cost: number;
+  impressions: number;
+}
+
+export interface SubscribersCampaign {
+  campaignName: string;
+  campaignStart: string;
+  subsGained: number;
+  cost: number;
+  impressions: number;
+  costPerSub: number;
+  convRate: number;
+  daily: SubscribersDailyPoint[];
+}
+
 export interface DashboardData {
   budget: number;
   flightStart: string;
@@ -68,4 +86,5 @@ export interface DashboardData {
   projectedPublicViews?: number;
   subscriberHistory?: SubscriberSnapshot[];
   demographics?: Demographics;
+  subscribersCampaign?: SubscribersCampaign;
 }

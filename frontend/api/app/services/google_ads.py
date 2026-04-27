@@ -157,10 +157,11 @@ async def fetch_ad_performance(
 async def fetch_daily_breakdown(
     customer_id: str, start_date: str, end_date: str,
 ) -> list[dict]:
-    """Fetch daily views, cost, impressions."""
+    """Fetch daily views, cost, impressions per campaign."""
     query = f"""
         SELECT
             segments.date,
+            campaign.name,
             metrics.video_trueview_views,
             metrics.cost_micros,
             metrics.impressions
@@ -172,6 +173,7 @@ async def fetch_daily_breakdown(
     return [
         {
             "Date": r.get("segments.date", ""),
+            "Campaign name": r.get("campaign.name", ""),
             "Video views": r.get("metrics.video_trueview_views", 0),
             "Cost (USD)": r.get("metrics.cost", 0.0),
             "Impressions": r.get("metrics.impressions", 0),
@@ -187,6 +189,7 @@ async def fetch_age_demographics(
     query = f"""
         SELECT
             ad_group_criterion.age_range.type,
+            campaign.name,
             metrics.video_trueview_views,
             metrics.cost_micros,
             metrics.impressions
@@ -197,6 +200,7 @@ async def fetch_age_demographics(
     return [
         {
             "Age": AGE_RANGE_LABELS.get(r.get("ad_group_criterion.age_range.type", ""), "Unknown"),
+            "Campaign name": r.get("campaign.name", ""),
             "Video views": r.get("metrics.video_trueview_views", 0),
             "Cost (USD)": r.get("metrics.cost", 0.0),
             "Impressions": r.get("metrics.impressions", 0),
@@ -212,6 +216,7 @@ async def fetch_gender_demographics(
     query = f"""
         SELECT
             ad_group_criterion.gender.type,
+            campaign.name,
             metrics.video_trueview_views,
             metrics.cost_micros,
             metrics.impressions
@@ -222,6 +227,7 @@ async def fetch_gender_demographics(
     return [
         {
             "Gender": GENDER_LABELS.get(r.get("ad_group_criterion.gender.type", ""), "Unknown"),
+            "Campaign name": r.get("campaign.name", ""),
             "Video views": r.get("metrics.video_trueview_views", 0),
             "Cost (USD)": r.get("metrics.cost", 0.0),
             "Impressions": r.get("metrics.impressions", 0),
@@ -237,6 +243,7 @@ async def fetch_device_demographics(
     query = f"""
         SELECT
             segments.device,
+            campaign.name,
             metrics.video_trueview_views,
             metrics.cost_micros,
             metrics.impressions
@@ -248,6 +255,7 @@ async def fetch_device_demographics(
     return [
         {
             "Device": DEVICE_LABELS.get(r.get("segments.device", ""), r.get("segments.device", "Unknown")),
+            "Campaign name": r.get("campaign.name", ""),
             "Video views": r.get("metrics.video_trueview_views", 0),
             "Cost (USD)": r.get("metrics.cost", 0.0),
             "Impressions": r.get("metrics.impressions", 0),
@@ -263,6 +271,7 @@ async def fetch_geo_demographics(
     query = f"""
         SELECT
             campaign_criterion.location.geo_target_constant,
+            campaign.name,
             metrics.video_trueview_views,
             metrics.cost_micros,
             metrics.impressions
@@ -281,6 +290,7 @@ async def fetch_geo_demographics(
     return [
         {
             "Metro area": geo_names.get(r.get("campaign_criterion.location.geo_target_constant", ""), "Unknown"),
+            "Campaign name": r.get("campaign.name", ""),
             "Video views": r.get("metrics.video_trueview_views", 0),
             "Cost (USD)": r.get("metrics.cost", 0.0),
             "Impressions": r.get("metrics.impressions", 0),

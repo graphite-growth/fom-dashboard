@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppSidebar, type DashboardSection } from "@/components/app-sidebar";
 import {
   SidebarInset,
   SidebarProvider,
@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DashboardData, DemographicRow, Video } from "@/lib/dashboard-data";
 import { DailyChart } from "@/components/daily-chart";
 import { SubscribersChart } from "@/components/subscribers-chart";
+import { NewSubsChart } from "@/components/new-subs-chart";
 
 function fmt(n: number) {
   return n.toLocaleString("en-US");
@@ -245,9 +246,13 @@ export default function App({
     fillColor,
   } = computed;
 
+  const [active, setActive] = useState<DashboardSection>("overview");
+  const headerLabel =
+    active === "subscribers" ? "Subscribers" : "YouTube Ads";
+
   return (
     <SidebarProvider>
-      <AppSidebar user={user} />
+      <AppSidebar user={user} active={active} onSectionChange={setActive} />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4">
@@ -257,7 +262,7 @@ export default function App({
               className="mr-2 data-[orientation=vertical]:h-4"
             />
             <h1 className="text-base font-medium">
-              FOM <span className="text-emerald-400">YouTube Ads</span>
+              FOM <span className="text-emerald-400">{headerLabel}</span>
             </h1>
           </div>
           <div className="ml-auto pr-4 text-xs text-muted-foreground">
@@ -266,6 +271,9 @@ export default function App({
           </div>
         </header>
 
+        {active === "subscribers" ? (
+          <SubscribersSection data={D} />
+        ) : (
         <div className="flex flex-col gap-4 p-4">
           {/* Status Banner */}
           <div
@@ -559,7 +567,126 @@ export default function App({
             Powered by Graphite
           </p>
         </div>
+        )}
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function SubscribersSection({ data: D }: { data: DashboardData }) {
+  const sc = D.subscribersCampaign;
+  if (!sc) {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            No subscribers-campaign data yet. Once the &ldquo;{`FOM - Subscribers - Company Size + Interests`}&rdquo;
+            campaign starts spending, metrics will appear here.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              New Subscribers
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {fmt(sc.subsGained)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Since {new Date(sc.campaignStart + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              Cost
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {usd(sc.cost)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Campaign spend
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              Impressions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {fmt(sc.impressions)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Total served
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              Cost per Subscriber
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {sc.subsGained > 0 ? usd(sc.costPerSub) : "—"}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Cost / new subs
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              Conversion Rate
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {sc.impressions > 0 ? (sc.convRate * 100).toFixed(3) + "%" : "—"}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Subs / impressions
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+            New Subscribers per Day
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sc.daily.length > 0 ? (
+            <NewSubsChart data={sc.daily} />
+          ) : (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              No daily data yet for {sc.campaignStart} → today.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <p className="text-center text-[10px] text-muted-foreground/40 py-4">
+        Powered by Graphite
+      </p>
+    </div>
   );
 }

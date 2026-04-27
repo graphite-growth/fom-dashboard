@@ -19,6 +19,8 @@ YOUTUBE_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCjoo243IaOdidaL8SA7_
 DASHBOARD_BUDGET = float(os.environ.get("DASHBOARD_BUDGET", "2500"))
 DASHBOARD_FLIGHT_START = os.environ.get("DASHBOARD_FLIGHT_START", "2026-03-24")
 DASHBOARD_FLIGHT_END = os.environ.get("DASHBOARD_FLIGHT_END", "2026-04-30")
+SUBSCRIBERS_CAMPAIGN_NAME = "FOM - Subscribers - Company Size + Interests"
+SUBSCRIBERS_CAMPAIGN_START = "2026-04-21"
 
 # Simple TTL cache
 _cache: dict[str, Any] | None = None
@@ -168,22 +170,27 @@ DEVICE_LABELS = {
 
 
 def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | None = None) -> list[dict]:
-    """Convert raw demographic rows into sorted [{label, views, cost, impressions, pctOfViews}]."""
-    total_views = sum(int(r.get("Video views", 0)) for r in rows)
-    result = []
-    for r in rows:
+    """Aggregate demographic rows by label, excluding the subscribers campaign."""
+    filtered = [r for r in rows if r.get("Campaign name") != SUBSCRIBERS_CAMPAIGN_NAME]
+    agg: dict[str, dict[str, float]] = {}
+    for r in filtered:
         raw_label = r.get(label_key, "Unknown")
         label = label_map.get(raw_label, raw_label) if label_map else raw_label
-        views = int(r.get("Video views", 0))
-        result.append(
-            {
-                "label": label,
-                "views": views,
-                "cost": round(float(r.get("Cost (USD)", 0)), 2),
-                "impressions": int(r.get("Impressions", 0)),
-                "pctOfViews": round(views / total_views, 4) if total_views > 0 else 0,
-            }
-        )
+        bucket = agg.setdefault(label, {"views": 0, "cost": 0.0, "impressions": 0})
+        bucket["views"] += int(r.get("Video views", 0))
+        bucket["cost"] += float(r.get("Cost (USD)", 0))
+        bucket["impressions"] += int(r.get("Impressions", 0))
+    total_views = sum(b["views"] for b in agg.values())
+    result = [
+        {
+            "label": label,
+            "views": int(b["views"]),
+            "cost": round(b["cost"], 2),
+            "impressions": int(b["impressions"]),
+            "pctOfViews": round(b["views"] / total_views, 4) if total_views > 0 else 0,
+        }
+        for label, b in agg.items()
+    ]
     result.sort(key=lambda x: x["views"], reverse=True)
     return result
 
@@ -203,6 +210,73 @@ def _transform_demographics(
     }
 
 
+def _build_subscribers_campaign(
+    subs_ads_rows: list[dict],
+    subs_daily_agg: dict[str, dict[str, float]],
+    subscriber_history: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the subscribers-campaign payload: totals + daily new-subs series."""
+    cost = round(sum(float(r.get("Cost (USD)", 0)) for r in subs_ads_rows), 2)
+    impressions = sum(int(r.get("Impressions", 0)) for r in subs_ads_rows)
+
+    # Daily ad spend / impressions, restricted to campaign window
+    ad_daily: list[dict[str, Any]] = [
+        {
+            "date": d,
+            "cost": round(v["cost"], 2),
+            "impressions": int(v["impressions"]),
+        }
+        for d, v in sorted(subs_daily_agg.items())
+        if d >= SUBSCRIBERS_CAMPAIGN_START
+    ]
+
+    # New-subs-per-day from channel history: diff consecutive days in window.
+    # We need the day before each target date to compute its delta.
+    sorted_history = sorted(subscriber_history, key=lambda x: x["date"])
+    new_subs_by_date: dict[str, int] = {}
+    for prev, curr in zip(sorted_history, sorted_history[1:]):
+        if curr["date"] >= SUBSCRIBERS_CAMPAIGN_START:
+            new_subs_by_date[curr["date"]] = curr["subscribers"] - prev["subscribers"]
+
+    # Subs gained: latest - last snapshot at or before campaign start
+    subs_gained = 0
+    in_window = [s for s in sorted_history if s["date"] >= SUBSCRIBERS_CAMPAIGN_START]
+    pre_window = [s for s in sorted_history if s["date"] < SUBSCRIBERS_CAMPAIGN_START]
+    if in_window:
+        baseline = pre_window[-1]["subscribers"] if pre_window else in_window[0]["subscribers"]
+        subs_gained = in_window[-1]["subscribers"] - baseline
+
+    daily = [
+        {
+            "date": d["date"],
+            "newSubs": new_subs_by_date.get(d["date"], 0),
+            "cost": d["cost"],
+            "impressions": d["impressions"],
+        }
+        for d in ad_daily
+    ]
+    # Include any history dates in the window that don't have ad data yet
+    ad_dates = {d["date"] for d in daily}
+    for date, new_subs in new_subs_by_date.items():
+        if date not in ad_dates:
+            daily.append({"date": date, "newSubs": new_subs, "cost": 0.0, "impressions": 0})
+    daily.sort(key=lambda x: x["date"])
+
+    cost_per_sub = round(cost / subs_gained, 2) if subs_gained > 0 else 0.0
+    conv_rate = round(subs_gained / impressions, 6) if impressions > 0 else 0.0
+
+    return {
+        "campaignName": SUBSCRIBERS_CAMPAIGN_NAME,
+        "campaignStart": SUBSCRIBERS_CAMPAIGN_START,
+        "subsGained": subs_gained,
+        "cost": cost,
+        "impressions": impressions,
+        "costPerSub": cost_per_sub,
+        "convRate": conv_rate,
+        "daily": daily,
+    }
+
+
 def _transform(
     ads_rows: list[dict],
     ads_daily_rows: list[dict],
@@ -210,9 +284,12 @@ def _transform(
     channel_stats: list[dict] | None = None,
 ) -> dict[str, Any]:
     """Transform Supermetrics data into DashboardData shape."""
-    # Group Google Ads data by ad name (episode), then ad group
+    # Group Google Ads data by ad name (episode), then ad group.
+    # Subscribers campaign rows are partitioned out — they live on their own tab.
+    subs_ads_rows = [r for r in ads_rows if r.get("Campaign name") == SUBSCRIBERS_CAMPAIGN_NAME]
+    video_ads_rows = [r for r in ads_rows if r.get("Campaign name") != SUBSCRIBERS_CAMPAIGN_NAME]
     episodes: dict[str, dict[str, Any]] = {}
-    for row in ads_rows:
+    for row in video_ads_rows:
         ad_name = row.get("Image ad name", row.get("Ad name", ""))
         adgroup = row.get("Ad group name", row.get("Ad group", "Unknown"))
         views = int(row.get("Video views", 0))
@@ -325,16 +402,18 @@ def _transform(
             }
         )
 
-    # Build daily data
+    # Build daily data — split by campaign so subscribers campaign stays isolated
     daily_agg: dict[str, dict[str, float]] = {}
+    subs_daily_agg: dict[str, dict[str, float]] = {}
     for row in ads_daily_rows:
         date = row.get("Date", row.get("Day", ""))
         if not date:
             continue
-        if date not in daily_agg:
-            daily_agg[date] = {"views": 0, "cost": 0.0}
-        daily_agg[date]["views"] += int(row.get("Video views", 0))
-        daily_agg[date]["cost"] += float(row.get("Cost (USD)", row.get("Cost", 0)))
+        target = subs_daily_agg if row.get("Campaign name") == SUBSCRIBERS_CAMPAIGN_NAME else daily_agg
+        bucket = target.setdefault(date, {"views": 0, "cost": 0.0, "impressions": 0})
+        bucket["views"] += int(row.get("Video views", 0))
+        bucket["cost"] += float(row.get("Cost (USD)", row.get("Cost", 0)))
+        bucket["impressions"] += int(row.get("Impressions", 0))
 
     daily = [{"date": d, "views": int(v["views"]), "cost": round(v["cost"], 2)} for d, v in sorted(daily_agg.items())]
 
@@ -366,6 +445,8 @@ def _transform(
     organic_ratio = total_public_views / total_paid_views if total_paid_views > 0 else 1.0
     projected_public_views = round(projected_paid_views * organic_ratio)
 
+    subscribers_campaign = _build_subscribers_campaign(subs_ads_rows, subs_daily_agg, subscriber_history)
+
     return {
         "budget": DASHBOARD_BUDGET,
         "flightStart": DASHBOARD_FLIGHT_START,
@@ -379,6 +460,7 @@ def _transform(
         "projectedPaidViews": projected_paid_views,
         "projectedPublicViews": projected_public_views,
         "subscriberHistory": subscriber_history,
+        "subscribersCampaign": subscribers_campaign,
     }
 
 
@@ -407,12 +489,12 @@ async def get_dashboard_data() -> dict[str, Any]:
         end_date=today,
     )
 
-    # Fetch Google Ads daily breakdown
+    # Fetch Google Ads daily breakdown (with campaign for splitting)
     ads_daily_raw = await supermetrics.query(
         api_key=SUPERMETRICS_API_KEY,
         ds_id="AW",
         ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Date,videoviews,Cost_usd,Impressions",
+        fields="Date,Campaignname,videoviews,Cost_usd,Impressions",
         date_range_type="custom",
         start_date=DASHBOARD_FLIGHT_START,
         end_date=today,
@@ -445,7 +527,7 @@ async def get_dashboard_data() -> dict[str, Any]:
         api_key=SUPERMETRICS_API_KEY,
         ds_id="AW",
         ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Age,videoviews,Cost_usd,Impressions",
+        fields="Age,Campaignname,videoviews,Cost_usd,Impressions",
         date_range_type="custom",
         start_date=DASHBOARD_FLIGHT_START,
         end_date=today,
@@ -454,7 +536,7 @@ async def get_dashboard_data() -> dict[str, Any]:
         api_key=SUPERMETRICS_API_KEY,
         ds_id="AW",
         ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Gender,videoviews,Cost_usd,Impressions",
+        fields="Gender,Campaignname,videoviews,Cost_usd,Impressions",
         date_range_type="custom",
         start_date=DASHBOARD_FLIGHT_START,
         end_date=today,
@@ -463,7 +545,7 @@ async def get_dashboard_data() -> dict[str, Any]:
         api_key=SUPERMETRICS_API_KEY,
         ds_id="AW",
         ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Device,videoviews,Cost_usd,Impressions",
+        fields="Device,Campaignname,videoviews,Cost_usd,Impressions",
         date_range_type="custom",
         start_date=DASHBOARD_FLIGHT_START,
         end_date=today,
@@ -472,7 +554,7 @@ async def get_dashboard_data() -> dict[str, Any]:
         api_key=SUPERMETRICS_API_KEY,
         ds_id="AW",
         ds_accounts=GOOGLE_ADS_ACCOUNT_ID,
-        fields="Metroarea,videoviews,Cost_usd,Impressions",
+        fields="Metroarea,Campaignname,videoviews,Cost_usd,Impressions",
         date_range_type="custom",
         start_date=DASHBOARD_FLIGHT_START,
         end_date=today,

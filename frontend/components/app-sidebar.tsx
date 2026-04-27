@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { LayoutDashboard } from "lucide-react"
+import { LayoutDashboard, Users } from "lucide-react"
 
 import { GraphiteLogo } from "@/components/ui/graphite-logo"
 import { NavUser } from "@/components/nav-user"
@@ -19,7 +19,20 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sidebar> & { user: { name: string; email: string; image: string }}) {
+export type DashboardSection = "overview" | "subscribers"
+
+type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
+  user: { name: string; email: string; image: string }
+  active: DashboardSection
+  onSectionChange: (section: DashboardSection) => void
+}
+
+const NAV_ITEMS: { id: DashboardSection; label: string; icon: React.ElementType }[] = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "subscribers", label: "Subscribers", icon: Users },
+]
+
+export function AppSidebar({ user, active, onSectionChange, ...props }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -42,12 +55,18 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton isActive tooltip="Overview">
-                  <LayoutDashboard />
-                  <span>Overview</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+                <SidebarMenuItem key={id}>
+                  <SidebarMenuButton
+                    isActive={active === id}
+                    tooltip={label}
+                    onClick={() => onSectionChange(id)}
+                  >
+                    <Icon />
+                    <span>{label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
