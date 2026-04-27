@@ -2,7 +2,7 @@
 
 import * as React from "react"
 
-import { LayoutDashboard, Users } from "lucide-react"
+import { CalendarDays, CalendarRange, LayoutDashboard, Users } from "lucide-react"
 
 import { GraphiteLogo } from "@/components/ui/graphite-logo"
 import { NavUser } from "@/components/nav-user"
@@ -19,7 +19,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export type DashboardSection = "overview" | "subscribers"
+export type DashboardSection = "overview" | "subscribers" | "weekly" | "monthly"
 
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   user: { name: string; email: string; image: string }
@@ -30,6 +30,8 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
 const NAV_ITEMS: { id: DashboardSection; label: string; icon: React.ElementType }[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "subscribers", label: "Subscribers", icon: Users },
+  { id: "weekly", label: "Weekly", icon: CalendarDays },
+  { id: "monthly", label: "Monthly", icon: CalendarRange },
 ]
 
 export function AppSidebar({ user, active, onSectionChange, ...props }: AppSidebarProps) {

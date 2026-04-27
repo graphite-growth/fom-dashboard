@@ -13,6 +13,8 @@ import type { DashboardData, DemographicRow, Video } from "@/lib/dashboard-data"
 import { DailyChart } from "@/components/daily-chart";
 import { SubscribersChart } from "@/components/subscribers-chart";
 import { NewSubsChart } from "@/components/new-subs-chart";
+import { PeriodChart } from "@/components/period-chart";
+import { aggregateDaily, deltaPct, type PeriodPoint } from "@/lib/aggregate";
 
 function fmt(n: number) {
   return n.toLocaleString("en-US");
@@ -247,8 +249,13 @@ export default function App({
   } = computed;
 
   const [active, setActive] = useState<DashboardSection>("overview");
-  const headerLabel =
-    active === "subscribers" ? "Subscribers" : "YouTube Ads";
+  const headerLabelMap: Record<DashboardSection, string> = {
+    overview: "YouTube Ads",
+    subscribers: "Subscribers",
+    weekly: "Weekly",
+    monthly: "Monthly",
+  };
+  const headerLabel = headerLabelMap[active];
 
   return (
     <SidebarProvider>
@@ -273,6 +280,10 @@ export default function App({
 
         {active === "subscribers" ? (
           <SubscribersSection data={D} />
+        ) : active === "weekly" ? (
+          <PeriodSection data={D} by="week" />
+        ) : active === "monthly" ? (
+          <PeriodSection data={D} by="month" />
         ) : (
         <div className="flex flex-col gap-4 p-4">
           {/* Status Banner */}
@@ -709,6 +720,121 @@ function SubscribersSection({ data: D }: { data: DashboardData }) {
               No daily data yet for {sc.campaignStart} → today.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <p className="text-center text-[10px] text-muted-foreground/40 py-4">
+        Powered by Graphite
+      </p>
+    </div>
+  );
+}
+
+function deltaBadge(d: number | null) {
+  if (d === null) return <span className="text-muted-foreground">—</span>;
+  const pct = (d * 100).toFixed(1);
+  const sign = d > 0 ? "+" : "";
+  const cls = d > 0 ? "text-emerald-400" : d < 0 ? "text-red-400" : "text-muted-foreground";
+  return <span className={cls}>{sign}{pct}%</span>;
+}
+
+function PeriodSection({
+  data: D,
+  by,
+}: {
+  data: DashboardData;
+  by: "week" | "month";
+}) {
+  const periods = useMemo(
+    () => aggregateDaily(D.daily, by, new Date(D.lastUpdated)),
+    [D.daily, D.lastUpdated, by],
+  );
+
+  if (periods.length === 0) {
+    return (
+      <div className="flex flex-col gap-4 p-4">
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            No daily data to aggregate yet.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const latest: PeriodPoint = periods[periods.length - 1];
+  const prior = periods.length > 1 ? periods[periods.length - 2] : null;
+  const dViews = prior ? deltaPct(latest.views, prior.views) : null;
+  const dCost = prior ? deltaPct(latest.cost, prior.cost) : null;
+  const dCpv = prior ? deltaPct(latest.cpv, prior.cpv) : null;
+  const periodLabel = by === "week" ? "Week" : "Month";
+
+  return (
+    <div className="flex flex-col gap-4 p-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              Latest {periodLabel} · Paid Views
+              {latest.isPartial && (
+                <span className="ml-2 text-[10px] font-normal text-amber-400 normal-case">
+                  partial
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {fmt(latest.views)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {latest.label} · {deltaBadge(dViews)} vs prior {by}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              Latest {periodLabel} · Spend
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold tabular-nums">
+              {usd(latest.cost)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {deltaBadge(dCost)} vs prior {by}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+              Latest {periodLabel} · Avg CPV
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-semibold tabular-nums ${cpvColor(latest.cpv)}`}>
+              ${latest.cpv.toFixed(3)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {deltaBadge(dCpv)} vs prior {by}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+            Paid Views per {periodLabel}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PeriodChart data={periods} />
+          <p className="mt-3 text-[10px] text-muted-foreground">
+            Striped bar = current {by} (in progress). Hover for spend / CPV.
+          </p>
         </CardContent>
       </Card>
 
