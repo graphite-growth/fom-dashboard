@@ -118,7 +118,11 @@ DEVICE_LABELS = {
 async def fetch_ad_performance(
     customer_id: str, start_date: str, end_date: str,
 ) -> list[dict]:
-    """Fetch ad-level performance data (views, cost, impressions, quartiles)."""
+    """Fetch ad-level performance data (views, cost, impressions, quartiles).
+
+    Includes the FOM Subscribers Demand Gen campaign so its cost/impressions
+    are pulled even though it isn't a VIDEO channel type.
+    """
     query = f"""
         SELECT
             campaign.name,
@@ -133,7 +137,8 @@ async def fetch_ad_performance(
             metrics.video_quartile_p100_rate
         FROM ad_group_ad
         WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
-            AND campaign.advertising_channel_type = 'VIDEO'
+            AND (campaign.advertising_channel_type = 'VIDEO'
+                OR campaign.name = 'FOM - Subscribers - Company Size + Interests')
             AND metrics.impressions > 0
     """
     raw = await _query(query, customer_id)
@@ -167,7 +172,8 @@ async def fetch_daily_breakdown(
             metrics.impressions
         FROM campaign
         WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
-            AND campaign.advertising_channel_type = 'VIDEO'
+            AND (campaign.advertising_channel_type = 'VIDEO'
+                OR campaign.name = 'FOM - Subscribers - Company Size + Interests')
     """
     raw = await _query(query, customer_id)
     return [
