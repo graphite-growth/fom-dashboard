@@ -120,8 +120,9 @@ async def fetch_ad_performance(
 ) -> list[dict]:
     """Fetch ad-level performance data (views, cost, impressions, quartiles).
 
-    Includes the FOM Subscribers Demand Gen campaign so its cost/impressions
-    are pulled even though it isn't a VIDEO channel type.
+    Includes VIDEO and DEMAND_GEN campaigns so the subscriber-acquisition
+    Demand Gen campaign is pulled alongside video ads. GAQL doesn't support
+    OR in WHERE, so we use IN to include both channel types.
     """
     query = f"""
         SELECT
@@ -137,8 +138,7 @@ async def fetch_ad_performance(
             metrics.video_quartile_p100_rate
         FROM ad_group_ad
         WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
-            AND (campaign.advertising_channel_type = 'VIDEO'
-                OR campaign.name = 'FOM - Subscribers - Company Size + Interests')
+            AND campaign.advertising_channel_type IN ('VIDEO', 'DEMAND_GEN')
             AND metrics.impressions > 0
     """
     raw = await _query(query, customer_id)
@@ -162,7 +162,7 @@ async def fetch_ad_performance(
 async def fetch_daily_breakdown(
     customer_id: str, start_date: str, end_date: str,
 ) -> list[dict]:
-    """Fetch daily views, cost, impressions per campaign."""
+    """Fetch daily views, cost, impressions per campaign (VIDEO + DEMAND_GEN)."""
     query = f"""
         SELECT
             segments.date,
@@ -172,8 +172,7 @@ async def fetch_daily_breakdown(
             metrics.impressions
         FROM campaign
         WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
-            AND (campaign.advertising_channel_type = 'VIDEO'
-                OR campaign.name = 'FOM - Subscribers - Company Size + Interests')
+            AND campaign.advertising_channel_type IN ('VIDEO', 'DEMAND_GEN')
     """
     raw = await _query(query, customer_id)
     return [
