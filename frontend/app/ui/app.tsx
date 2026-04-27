@@ -248,12 +248,12 @@ export default function App({
     fillColor,
   } = computed;
 
-  const [active, setActive] = useState<DashboardSection>("overview");
+  const [active, setActive] = useState<DashboardSection>("views-daily");
   const headerLabelMap: Record<DashboardSection, string> = {
-    overview: "YouTube Ads",
-    subscribers: "Subscribers",
-    weekly: "Weekly",
-    monthly: "Monthly",
+    "views-daily": "Daily Performance",
+    "views-weekly": "Weekly Performance",
+    "views-monthly": "Monthly Performance",
+    "subscribers-overview": "Subscribers",
   };
   const headerLabel = headerLabelMap[active];
 
@@ -278,11 +278,11 @@ export default function App({
           </div>
         </header>
 
-        {active === "subscribers" ? (
+        {active === "subscribers-overview" ? (
           <SubscribersSection data={D} />
-        ) : active === "weekly" ? (
+        ) : active === "views-weekly" ? (
           <PeriodSection data={D} by="week" />
-        ) : active === "monthly" ? (
+        ) : active === "views-monthly" ? (
           <PeriodSection data={D} by="month" />
         ) : (
         <div className="flex flex-col gap-4 p-4">

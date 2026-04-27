@@ -2,10 +2,22 @@
 
 import * as React from "react"
 
-import { CalendarDays, CalendarRange, LayoutDashboard, Users } from "lucide-react"
+import {
+  BarChart3,
+  Calendar,
+  CalendarDays,
+  CalendarRange,
+  ChevronRight,
+  Users,
+} from "lucide-react"
 
 import { GraphiteLogo } from "@/components/ui/graphite-logo"
 import { NavUser } from "@/components/nav-user"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Sidebar,
   SidebarContent,
@@ -16,10 +28,17 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export type DashboardSection = "overview" | "subscribers" | "weekly" | "monthly"
+export type DashboardSection =
+  | "views-daily"
+  | "views-weekly"
+  | "views-monthly"
+  | "subscribers-overview"
 
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   user: { name: string; email: string; image: string }
@@ -27,11 +46,27 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   onSectionChange: (section: DashboardSection) => void
 }
 
-const NAV_ITEMS: { id: DashboardSection; label: string; icon: React.ElementType }[] = [
-  { id: "overview", label: "Overview", icon: LayoutDashboard },
-  { id: "subscribers", label: "Subscribers", icon: Users },
-  { id: "weekly", label: "Weekly", icon: CalendarDays },
-  { id: "monthly", label: "Monthly", icon: CalendarRange },
+interface NavGroup {
+  label: string
+  icon: React.ElementType
+  items: { id: DashboardSection; label: string; icon: React.ElementType }[]
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Views",
+    icon: BarChart3,
+    items: [
+      { id: "views-daily", label: "Daily Performance", icon: Calendar },
+      { id: "views-weekly", label: "Weekly Performance", icon: CalendarDays },
+      { id: "views-monthly", label: "Monthly Performance", icon: CalendarRange },
+    ],
+  },
+  {
+    label: "Subscribers",
+    icon: Users,
+    items: [{ id: "subscribers-overview", label: "Overview", icon: Calendar }],
+  },
 ]
 
 export function AppSidebar({ user, active, onSectionChange, ...props }: AppSidebarProps) {
@@ -57,18 +92,44 @@ export function AppSidebar({ user, active, onSectionChange, ...props }: AppSideb
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
-                <SidebarMenuItem key={id}>
-                  <SidebarMenuButton
-                    isActive={active === id}
-                    tooltip={label}
-                    onClick={() => onSectionChange(id)}
+              {NAV_GROUPS.map((group) => {
+                const groupActive = group.items.some((it) => it.id === active)
+                const Icon = group.icon
+                return (
+                  <Collapsible
+                    key={group.label}
+                    defaultOpen={groupActive}
+                    className="group/collapsible"
+                    asChild
                   >
-                    <Icon />
-                    <span>{label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                    <SidebarMenuItem>
+                      <CollapsibleTrigger asChild>
+                        <SidebarMenuButton tooltip={group.label}>
+                          <Icon />
+                          <span>{group.label}</span>
+                          <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </SidebarMenuButton>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <SidebarMenuSub>
+                          {group.items.map(({ id, label, icon: SubIcon }) => (
+                            <SidebarMenuSubItem key={id}>
+                              <SidebarMenuSubButton
+                                isActive={active === id}
+                                onClick={() => onSectionChange(id)}
+                                className="cursor-pointer"
+                              >
+                                <SubIcon />
+                                <span>{label}</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
+                        </SidebarMenuSub>
+                      </CollapsibleContent>
+                    </SidebarMenuItem>
+                  </Collapsible>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
