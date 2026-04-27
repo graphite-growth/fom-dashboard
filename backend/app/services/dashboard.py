@@ -19,8 +19,14 @@ YOUTUBE_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCjoo243IaOdidaL8SA7_
 DASHBOARD_BUDGET = float(os.environ.get("DASHBOARD_BUDGET", "2500"))
 DASHBOARD_FLIGHT_START = os.environ.get("DASHBOARD_FLIGHT_START", "2026-03-24")
 DASHBOARD_FLIGHT_END = os.environ.get("DASHBOARD_FLIGHT_END", "2026-04-30")
-SUBSCRIBERS_CAMPAIGN_NAME = "FOM - Subscribers - Company Size + Interests"
+# All campaigns whose name starts with this prefix are aggregated on the Subscribers tab
+# and excluded from Overview totals/demographics.
+SUBSCRIBERS_CAMPAIGN_PREFIX = "FOM - Subscribers - "
 SUBSCRIBERS_CAMPAIGN_START = "2026-04-21"
+
+
+def _is_subs_campaign(name: object) -> bool:
+    return isinstance(name, str) and name.startswith(SUBSCRIBERS_CAMPAIGN_PREFIX)
 
 # Simple TTL cache
 _cache: dict[str, Any] | None = None
@@ -171,7 +177,7 @@ DEVICE_LABELS = {
 
 def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | None = None) -> list[dict]:
     """Aggregate demographic rows by label, excluding the subscribers campaign."""
-    filtered = [r for r in rows if r.get("Campaign name") != SUBSCRIBERS_CAMPAIGN_NAME]
+    filtered = [r for r in rows if not _is_subs_campaign(r.get("Campaign name"))]
     agg: dict[str, dict[str, float]] = {}
     for r in filtered:
         raw_label = r.get(label_key, "Unknown")
@@ -265,8 +271,12 @@ def _build_subscribers_campaign(
     cost_per_sub = round(cost / subs_gained, 2) if subs_gained > 0 else 0.0
     conv_rate = round(subs_gained / impressions, 6) if impressions > 0 else 0.0
 
+    campaign_names = sorted({
+        str(r["Campaign name"]) for r in subs_ads_rows if r.get("Campaign name")
+    })
+
     return {
-        "campaignName": SUBSCRIBERS_CAMPAIGN_NAME,
+        "campaignNames": campaign_names,
         "campaignStart": SUBSCRIBERS_CAMPAIGN_START,
         "subsGained": subs_gained,
         "cost": cost,
@@ -286,8 +296,8 @@ def _transform(
     """Transform Supermetrics data into DashboardData shape."""
     # Group Google Ads data by ad name (episode), then ad group.
     # Subscribers campaign rows are partitioned out — they live on their own tab.
-    subs_ads_rows = [r for r in ads_rows if r.get("Campaign name") == SUBSCRIBERS_CAMPAIGN_NAME]
-    video_ads_rows = [r for r in ads_rows if r.get("Campaign name") != SUBSCRIBERS_CAMPAIGN_NAME]
+    subs_ads_rows = [r for r in ads_rows if _is_subs_campaign(r.get("Campaign name"))]
+    video_ads_rows = [r for r in ads_rows if not _is_subs_campaign(r.get("Campaign name"))]
     episodes: dict[str, dict[str, Any]] = {}
     for row in video_ads_rows:
         ad_name = row.get("Image ad name", row.get("Ad name", ""))
@@ -409,7 +419,7 @@ def _transform(
         date = row.get("Date", row.get("Day", ""))
         if not date:
             continue
-        target = subs_daily_agg if row.get("Campaign name") == SUBSCRIBERS_CAMPAIGN_NAME else daily_agg
+        target = subs_daily_agg if _is_subs_campaign(row.get("Campaign name")) else daily_agg
         bucket = target.setdefault(date, {"views": 0, "cost": 0.0, "impressions": 0})
         bucket["views"] += int(row.get("Video views", 0))
         bucket["cost"] += float(row.get("Cost (USD)", row.get("Cost", 0)))

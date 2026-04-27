@@ -580,7 +580,7 @@ function SubscribersSection({ data: D }: { data: DashboardData }) {
       <div className="flex flex-col gap-4 p-4">
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No subscribers-campaign data yet. Once the &ldquo;{`FOM - Subscribers - Company Size + Interests`}&rdquo;
+            No subscribers-campaign data yet. Once any &ldquo;FOM - Subscribers - *&rdquo;
             campaign starts spending, metrics will appear here.
           </CardContent>
         </Card>

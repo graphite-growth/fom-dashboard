@@ -62,7 +62,7 @@ export interface SubscribersDailyPoint {
 }
 
 export interface SubscribersCampaign {
-  campaignName: string;
+  campaignNames: string[];
   campaignStart: string;
   subsGained: number;
   cost: number;
