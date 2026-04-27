@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 SUPERMETRICS_API_KEY = os.environ.get("SUPERMETRICS_API_KEY", "")
 GOOGLE_ADS_ACCOUNT_ID = os.environ.get("GOOGLE_ADS_ACCOUNT_ID", "6759019449")
 YOUTUBE_CHANNEL_ID = os.environ.get("YOUTUBE_CHANNEL_ID", "UCjoo243IaOdidaL8SA7_-HQ")
-DASHBOARD_BUDGET = float(os.environ.get("DASHBOARD_BUDGET", "2500"))
+DASHBOARD_BUDGET = float(os.environ.get("DASHBOARD_BUDGET", "1940"))
 DASHBOARD_FLIGHT_START = os.environ.get("DASHBOARD_FLIGHT_START", "2026-03-24")
 DASHBOARD_FLIGHT_END = os.environ.get("DASHBOARD_FLIGHT_END", "2026-04-30")
 # All campaigns whose name starts with this prefix are aggregated on the Subscribers tab

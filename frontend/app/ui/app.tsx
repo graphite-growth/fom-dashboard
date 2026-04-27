@@ -329,22 +329,7 @@ export default function App({
           </Card>
 
           {/* Channel Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
-                  Subscribers
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold tabular-nums">
-                  {fmt(D.subscribers ?? 0)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Target: <span className="text-emerald-400">100K</span> in 12 months
-                </p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
@@ -454,20 +439,6 @@ export default function App({
               <DailyChart data={D.daily} />
             </CardContent>
           </Card>
-
-          {/* Subscribers Chart */}
-          {D.subscriberHistory && D.subscriberHistory.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                  Subscribers
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SubscribersChart data={D.subscriberHistory} />
-              </CardContent>
-            </Card>
-          )}
 
           {/* Per Video Table */}
           <Card>
