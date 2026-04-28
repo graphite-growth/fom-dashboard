@@ -5,6 +5,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,9 @@ DASHBOARD_FLIGHT_START = os.environ.get("DASHBOARD_FLIGHT_START", "2026-03-24")
 DASHBOARD_FLIGHT_END = os.environ.get("DASHBOARD_FLIGHT_END", "2026-04-30")
 # All campaigns whose name starts with this prefix are aggregated on the Subscribers tab
 # and excluded from Overview totals/demographics.
+# FOM Google Ads account is configured to America/Chicago. Match the account's
+# timezone so subscriber snapshots and the daily-views chart agree on what "today" is.
+ACCOUNT_TZ = ZoneInfo("America/Chicago")
 SUBSCRIBERS_CAMPAIGN_PREFIX = "FOM - Subscribers - "
 SUBSCRIBERS_CAMPAIGN_START = "2026-04-21"
 
@@ -439,8 +443,9 @@ def _transform(
     # the channel-level stat which includes Shorts.
     total_channel_views = sum(int(r.get("Views", 0)) for r in ytpd_rows)
 
-    # Save daily subscriber snapshot and load history
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Save daily subscriber snapshot and load history.
+    # Use the ad account's timezone so the date matches the Views daily chart.
+    today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
     subscriber_history = _save_subscriber_snapshot(today, subscribers)
 
     # Projections: budget / CPV = projected views
@@ -486,7 +491,7 @@ async def get_dashboard_data() -> dict[str, Any]:
     if not SUPERMETRICS_API_KEY:
         raise ValueError("SUPERMETRICS_API_KEY not configured")
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
 
     # Fetch Google Ads campaign/adgroup data
     ads_rows_raw = await supermetrics.query(

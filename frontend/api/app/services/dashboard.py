@@ -6,6 +6,7 @@ import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,10 @@ DASHBOARD_FLIGHT_END = os.environ.get("DASHBOARD_FLIGHT_END", "2026-04-30")
 # in Google Ads and it picks up the right tab automatically.
 SUBSCRIBERS_CAMPAIGN_PREFIX = "FOM - Subscribers - "
 SUBSCRIBERS_CAMPAIGN_START = "2026-04-21"
+
+# FOM Google Ads account is configured to America/Chicago. Match the account's
+# timezone so subscriber snapshots and the daily-views chart agree on what "today" is.
+ACCOUNT_TZ = ZoneInfo("America/Chicago")
 
 
 def _is_subs_campaign(name: object) -> bool:
@@ -466,8 +471,9 @@ def _transform(
     # Total public views from per-video data (excludes Shorts counted in channel-level stat)
     total_channel_views = sum(int(r.get("Views", 0)) for r in ytpd_rows)
 
-    # Save daily subscriber snapshot and load history
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Save daily subscriber snapshot and load history.
+    # Use the ad account's timezone so the date matches the Views daily chart.
+    today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
     subscriber_history = _interpolate_gaps(_save_subscriber_snapshot(today, subscribers))
 
     # Projections: budget / CPV = projected views
@@ -512,7 +518,7 @@ async def get_dashboard_data() -> dict[str, Any]:
         logger.info("Returning cached dashboard data")
         return _cache
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
 
     # Fetch all data in parallel from Google Ads REST API and YouTube Data API
     results = await asyncio.gather(
