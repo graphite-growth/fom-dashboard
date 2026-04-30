@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any
 
-from app.services import google_ads, youtube, youtube_analytics
+from app.services import google_ads, youtube
 
 logger = logging.getLogger(__name__)
 
@@ -84,16 +84,13 @@ SUBSCRIBER_SEED: list[dict[str, Any]] = [
 
 
 def _build_subscriber_history(
-    deltas: list[dict[str, Any]],
     current_subscribers: int,
     start_date: str,
     end_date: str,
 ) -> list[dict[str, Any]]:
-    """Build daily {date, subscribers} series for [start_date, end_date].
+    """Build daily {date, subscribers} series from the static seed + today's live count.
 
-    Prefers YouTube Analytics deltas anchored to today's live count; falls back
-    to the static SUBSCRIBER_SEED + today's live count when the API path is
-    unavailable. Linearly interpolates any gap days.
+    Linearly interpolates any gap days between known points.
     """
     if current_subscribers <= 0:
         return []
@@ -101,20 +98,6 @@ def _build_subscriber_history(
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
 
-    if deltas:
-        net_by_date = {row["date"]: int(row["net"]) for row in deltas}
-        history: list[dict[str, Any]] = []
-        running_total = current_subscribers
-        cursor = end_dt
-        while cursor >= start_dt:
-            date_str = cursor.strftime("%Y-%m-%d")
-            history.append({"date": date_str, "subscribers": running_total})
-            running_total -= net_by_date.get(date_str, 0)
-            cursor -= timedelta(days=1)
-        history.reverse()
-        return history
-
-    # Fallback: static seed + today's live count, with linear interpolation for any gaps.
     by_date: dict[str, int] = {row["date"]: int(row["subscribers"]) for row in SUBSCRIBER_SEED}
     today = end_dt.strftime("%Y-%m-%d")
     by_date[today] = current_subscribers
@@ -358,7 +341,6 @@ def _transform(
     ads_daily_rows: list[dict],
     ytpd_rows: list[dict],
     channel_stats: list[dict] | None = None,
-    subscriber_deltas: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Transform Supermetrics data into DashboardData shape."""
     # Subscribers campaign rows are partitioned out — they live on their own tab.
@@ -505,11 +487,10 @@ def _transform(
     # Total public views from per-video data (excludes Shorts counted in channel-level stat)
     total_channel_views = sum(int(r.get("Views", 0)) for r in ytpd_rows)
 
-    # Reconstruct daily subscriber history from YouTube Analytics deltas,
-    # anchored to the current count from the YouTube Data API.
+    # Subscriber history from the static seed + today's live count.
     today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
     subscriber_history = _build_subscriber_history(
-        subscriber_deltas or [], subscribers, DASHBOARD_FLIGHT_START, today
+        subscribers, DASHBOARD_FLIGHT_START, today
     )
 
     # Projections: budget / CPV = projected views
@@ -566,16 +547,12 @@ async def get_dashboard_data() -> dict[str, Any]:
         google_ads.fetch_gender_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
         google_ads.fetch_device_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
         google_ads.fetch_geo_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
-        youtube_analytics.fetch_subscriber_deltas(YOUTUBE_CHANNEL_ID, DASHBOARD_FLIGHT_START, today),
         return_exceptions=True,
     )
 
     # Unpack results, replacing exceptions with empty lists
     unpacked: list[list[dict]] = []
-    labels = [
-        "ads", "daily", "youtube_videos", "youtube_channel",
-        "age", "gender", "device", "geo", "subscriber_deltas",
-    ]
+    labels = ["ads", "daily", "youtube_videos", "youtube_channel", "age", "gender", "device", "geo"]
     for i, r in enumerate(results):
         if isinstance(r, Exception):
             logger.error("Query %s failed: %s", labels[i], r)
@@ -583,15 +560,11 @@ async def get_dashboard_data() -> dict[str, Any]:
         else:
             unpacked.append(r)
 
-    (
-        ads_rows, ads_daily_rows, ytpd_rows, channel_stats,
-        age_rows, gender_rows, device_rows, geo_rows,
-        subscriber_deltas,
-    ) = unpacked
+    ads_rows, ads_daily_rows, ytpd_rows, channel_stats, age_rows, gender_rows, device_rows, geo_rows = unpacked
 
     demographics = _transform_demographics(age_rows, gender_rows, device_rows, geo_rows)
 
-    result = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats, subscriber_deltas)
+    result = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats)
     result["demographics"] = demographics
 
     _cache = result
