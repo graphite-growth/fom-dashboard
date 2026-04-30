@@ -37,6 +37,51 @@ _cache: dict[str, Any] | None = None
 _cache_time: float = 0
 CACHE_TTL = 900  # 15 minutes
 
+# Daily subscriber count exported from YouTube Studio Analytics. Used as the
+# source of truth because OAuth-based YouTube Analytics API access requires
+# the FOM Brand Account *Owner* to consent — we only have Manager access, so
+# `channel==MINE` resolves to the wrong channel. Update this list periodically
+# from YouTube Studio → Analytics → Audience → "Download report" (CSV).
+SUBSCRIBER_SEED: list[dict[str, Any]] = [
+    {"date": "2026-03-24", "subscribers": 46},
+    {"date": "2026-03-25", "subscribers": 48},
+    {"date": "2026-03-26", "subscribers": 49},
+    {"date": "2026-03-27", "subscribers": 49},
+    {"date": "2026-03-28", "subscribers": 49},
+    {"date": "2026-03-29", "subscribers": 50},
+    {"date": "2026-03-30", "subscribers": 51},
+    {"date": "2026-03-31", "subscribers": 52},
+    {"date": "2026-04-01", "subscribers": 52},
+    {"date": "2026-04-02", "subscribers": 55},
+    {"date": "2026-04-03", "subscribers": 61},
+    {"date": "2026-04-04", "subscribers": 65},
+    {"date": "2026-04-05", "subscribers": 67},
+    {"date": "2026-04-06", "subscribers": 68},
+    {"date": "2026-04-07", "subscribers": 70},
+    {"date": "2026-04-08", "subscribers": 71},
+    {"date": "2026-04-09", "subscribers": 73},
+    {"date": "2026-04-10", "subscribers": 74},
+    {"date": "2026-04-11", "subscribers": 74},
+    {"date": "2026-04-12", "subscribers": 75},
+    {"date": "2026-04-13", "subscribers": 75},
+    {"date": "2026-04-14", "subscribers": 76},
+    {"date": "2026-04-15", "subscribers": 77},
+    {"date": "2026-04-16", "subscribers": 79},
+    {"date": "2026-04-17", "subscribers": 80},
+    {"date": "2026-04-18", "subscribers": 80},
+    {"date": "2026-04-19", "subscribers": 81},
+    {"date": "2026-04-20", "subscribers": 81},
+    {"date": "2026-04-21", "subscribers": 90},
+    {"date": "2026-04-22", "subscribers": 92},
+    {"date": "2026-04-23", "subscribers": 104},
+    {"date": "2026-04-24", "subscribers": 112},
+    {"date": "2026-04-25", "subscribers": 130},
+    {"date": "2026-04-26", "subscribers": 148},
+    {"date": "2026-04-27", "subscribers": 179},
+    {"date": "2026-04-28", "subscribers": 215},
+    {"date": "2026-04-29", "subscribers": 249},
+]
+
 
 def _build_subscriber_history(
     deltas: list[dict[str, Any]],
@@ -44,31 +89,58 @@ def _build_subscriber_history(
     start_date: str,
     end_date: str,
 ) -> list[dict[str, Any]]:
-    """Build daily {date, subscribers} series, anchored to today's count.
+    """Build daily {date, subscribers} series for [start_date, end_date].
 
-    Anchors end_date subscriber count to current_subscribers (from YouTube Data API)
-    and walks backwards subtracting each day's net (gained - lost) to recover
-    historical end-of-day totals.
+    Prefers YouTube Analytics deltas anchored to today's live count; falls back
+    to the static SUBSCRIBER_SEED + today's live count when the API path is
+    unavailable. Linearly interpolates any gap days.
     """
     if current_subscribers <= 0:
         return []
 
-    net_by_date = {row["date"]: int(row["net"]) for row in deltas}
-
     start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
     end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
 
-    history: list[dict[str, Any]] = []
-    running_total = current_subscribers
-    cursor = end_dt
-    while cursor >= start_dt:
-        date_str = cursor.strftime("%Y-%m-%d")
-        history.append({"date": date_str, "subscribers": running_total})
-        running_total -= net_by_date.get(date_str, 0)
-        cursor -= timedelta(days=1)
+    if deltas:
+        net_by_date = {row["date"]: int(row["net"]) for row in deltas}
+        history: list[dict[str, Any]] = []
+        running_total = current_subscribers
+        cursor = end_dt
+        while cursor >= start_dt:
+            date_str = cursor.strftime("%Y-%m-%d")
+            history.append({"date": date_str, "subscribers": running_total})
+            running_total -= net_by_date.get(date_str, 0)
+            cursor -= timedelta(days=1)
+        history.reverse()
+        return history
 
-    history.reverse()
-    return history
+    # Fallback: static seed + today's live count, with linear interpolation for any gaps.
+    by_date: dict[str, int] = {row["date"]: int(row["subscribers"]) for row in SUBSCRIBER_SEED}
+    today = end_dt.strftime("%Y-%m-%d")
+    by_date[today] = current_subscribers
+
+    out: list[dict[str, Any]] = []
+    cursor = start_dt
+    last_known: tuple[str, int] | None = None
+    pending_gap: list[str] = []
+    while cursor <= end_dt:
+        date_str = cursor.strftime("%Y-%m-%d")
+        if date_str in by_date:
+            value = by_date[date_str]
+            if pending_gap and last_known is not None:
+                prev_date, prev_value = last_known
+                span = (cursor - datetime.strptime(prev_date, "%Y-%m-%d").date()).days
+                for i, gap_date in enumerate(pending_gap, start=1):
+                    interp = round(prev_value + (value - prev_value) * i / span)
+                    out.append({"date": gap_date, "subscribers": interp})
+                pending_gap = []
+            out.append({"date": date_str, "subscribers": value})
+            last_known = (date_str, value)
+        else:
+            if last_known is not None:
+                pending_gap.append(date_str)
+        cursor += timedelta(days=1)
+    return out
 
 
 def _rows_to_dicts(rows: list[list]) -> list[dict]:
