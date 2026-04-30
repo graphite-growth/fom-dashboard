@@ -55,14 +55,20 @@ async def fetch_subscriber_deltas(
 
     Returns rows like {"date": "2026-04-21", "gained": 12, "lost": 3, "net": 9}.
     Days with no activity are omitted by the API (caller should default to 0).
+
+    Uses ``channel==MINE`` rather than ``channel==<id>``: the latter requires
+    a content-owner (MCN) credential, the former works for regular channel
+    managers. The channel queried is implicitly the YouTube identity selected
+    during OAuth, so ``channel_id`` is taken on trust here.
     """
+    del channel_id  # implicit via OAuth identity
     creds = _get_credentials()
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             f"{YT_ANALYTICS_BASE}/reports",
             params={
-                "ids": f"channel=={channel_id}",
+                "ids": "channel==MINE",
                 "startDate": start_date,
                 "endDate": end_date,
                 "metrics": "subscribersGained,subscribersLost",
