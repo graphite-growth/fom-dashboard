@@ -1,16 +1,14 @@
 """Dashboard data service — fetches from Google Ads and YouTube APIs, transforms, and caches."""
 
 import asyncio
-import json
 import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from pathlib import Path
 from typing import Any
 
-from app.services import google_ads, youtube
+from app.services import google_ads, youtube, youtube_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -39,74 +37,37 @@ _cache: dict[str, Any] | None = None
 _cache_time: float = 0
 CACHE_TTL = 900  # 15 minutes
 
-# In-memory subscriber history (serverless filesystem is read-only)
-_subscriber_history: list[dict[str, Any]] | None = None
 
-SUBSCRIBER_SEED = [
-    {"date": "2026-03-24", "subscribers": 46},
-    {"date": "2026-03-25", "subscribers": 47},
-    {"date": "2026-03-26", "subscribers": 47},
-    {"date": "2026-03-27", "subscribers": 48},
-    {"date": "2026-03-28", "subscribers": 49},
-    {"date": "2026-03-29", "subscribers": 49},
-    {"date": "2026-03-30", "subscribers": 50},
-    {"date": "2026-03-31", "subscribers": 51},
-    {"date": "2026-04-01", "subscribers": 52},
-]
+def _build_subscriber_history(
+    deltas: list[dict[str, Any]],
+    current_subscribers: int,
+    start_date: str,
+    end_date: str,
+) -> list[dict[str, Any]]:
+    """Build daily {date, subscribers} series, anchored to today's count.
 
+    Anchors end_date subscriber count to current_subscribers (from YouTube Data API)
+    and walks backwards subtracting each day's net (gained - lost) to recover
+    historical end-of-day totals.
+    """
+    if current_subscribers <= 0:
+        return []
 
-def _load_subscriber_history() -> list[dict[str, Any]]:
-    """Load subscriber history from memory, seeding if empty."""
-    global _subscriber_history
-    if _subscriber_history is not None:
-        return _subscriber_history
-    # Try loading from filesystem (works in local dev, not on Vercel)
-    history_path = Path(os.environ.get("SUBSCRIBER_HISTORY_PATH", "./subscriber_history.json"))
-    if history_path.exists():
-        try:
-            _subscriber_history = json.loads(history_path.read_text())
-            return _subscriber_history
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Failed to read subscriber history, using seed data")
-    _subscriber_history = list(SUBSCRIBER_SEED)
-    return _subscriber_history
+    net_by_date = {row["date"]: int(row["net"]) for row in deltas}
 
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
 
-def _interpolate_gaps(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Fill date gaps in subscriber history with linear interpolation."""
-    if len(history) < 2:
-        return history
-    filled: list[dict[str, Any]] = [history[0]]
-    for i in range(1, len(history)):
-        prev_date = datetime.strptime(history[i - 1]["date"], "%Y-%m-%d")
-        curr_date = datetime.strptime(history[i]["date"], "%Y-%m-%d")
-        gap_days = (curr_date - prev_date).days
-        if gap_days > 1:
-            prev_subs = history[i - 1]["subscribers"]
-            curr_subs = history[i]["subscribers"]
-            for d in range(1, gap_days):
-                interp_date = prev_date + timedelta(days=d)
-                interp_subs = round(prev_subs + (curr_subs - prev_subs) * d / gap_days)
-                filled.append({"date": interp_date.strftime("%Y-%m-%d"), "subscribers": interp_subs})
-        filled.append(history[i])
-    return filled
+    history: list[dict[str, Any]] = []
+    running_total = current_subscribers
+    cursor = end_dt
+    while cursor >= start_dt:
+        date_str = cursor.strftime("%Y-%m-%d")
+        history.append({"date": date_str, "subscribers": running_total})
+        running_total -= net_by_date.get(date_str, 0)
+        cursor -= timedelta(days=1)
 
-
-def _save_subscriber_snapshot(date: str, subscribers: int) -> list[dict[str, Any]]:
-    """Append today's subscriber count if not already recorded. Returns full history."""
-    history = _load_subscriber_history()
-    existing_dates = {entry["date"] for entry in history}
-    if date not in existing_dates and subscribers > 0:
-        history.append({"date": date, "subscribers": subscribers})
-        history.sort(key=lambda x: x["date"])
-        # Try filesystem write (works locally, gracefully fails on Vercel)
-        history_path = Path(os.environ.get("SUBSCRIBER_HISTORY_PATH", "./subscriber_history.json"))
-        try:
-            history_path.parent.mkdir(parents=True, exist_ok=True)
-            history_path.write_text(json.dumps(history, indent=2))
-            logger.info("Saved subscriber snapshot: %s = %d", date, subscribers)
-        except OSError:
-            logger.info("Filesystem read-only, subscriber snapshot kept in memory only")
+    history.reverse()
     return history
 
 
@@ -325,6 +286,7 @@ def _transform(
     ads_daily_rows: list[dict],
     ytpd_rows: list[dict],
     channel_stats: list[dict] | None = None,
+    subscriber_deltas: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Transform Supermetrics data into DashboardData shape."""
     # Subscribers campaign rows are partitioned out — they live on their own tab.
@@ -471,10 +433,12 @@ def _transform(
     # Total public views from per-video data (excludes Shorts counted in channel-level stat)
     total_channel_views = sum(int(r.get("Views", 0)) for r in ytpd_rows)
 
-    # Save daily subscriber snapshot and load history.
-    # Use the ad account's timezone so the date matches the Views daily chart.
+    # Reconstruct daily subscriber history from YouTube Analytics deltas,
+    # anchored to the current count from the YouTube Data API.
     today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
-    subscriber_history = _interpolate_gaps(_save_subscriber_snapshot(today, subscribers))
+    subscriber_history = _build_subscriber_history(
+        subscriber_deltas or [], subscribers, DASHBOARD_FLIGHT_START, today
+    )
 
     # Projections: budget / CPV = projected views
     total_paid_views = sum(v["views"] for v in videos)
@@ -530,12 +494,16 @@ async def get_dashboard_data() -> dict[str, Any]:
         google_ads.fetch_gender_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
         google_ads.fetch_device_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
         google_ads.fetch_geo_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
+        youtube_analytics.fetch_subscriber_deltas(YOUTUBE_CHANNEL_ID, DASHBOARD_FLIGHT_START, today),
         return_exceptions=True,
     )
 
     # Unpack results, replacing exceptions with empty lists
     unpacked: list[list[dict]] = []
-    labels = ["ads", "daily", "youtube_videos", "youtube_channel", "age", "gender", "device", "geo"]
+    labels = [
+        "ads", "daily", "youtube_videos", "youtube_channel",
+        "age", "gender", "device", "geo", "subscriber_deltas",
+    ]
     for i, r in enumerate(results):
         if isinstance(r, Exception):
             logger.error("Query %s failed: %s", labels[i], r)
@@ -543,11 +511,15 @@ async def get_dashboard_data() -> dict[str, Any]:
         else:
             unpacked.append(r)
 
-    ads_rows, ads_daily_rows, ytpd_rows, channel_stats, age_rows, gender_rows, device_rows, geo_rows = unpacked
+    (
+        ads_rows, ads_daily_rows, ytpd_rows, channel_stats,
+        age_rows, gender_rows, device_rows, geo_rows,
+        subscriber_deltas,
+    ) = unpacked
 
     demographics = _transform_demographics(age_rows, gender_rows, device_rows, geo_rows)
 
-    result = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats)
+    result = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats, subscriber_deltas)
     result["demographics"] = demographics
 
     _cache = result
