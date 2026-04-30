@@ -61,10 +61,29 @@ async def fetch_subscriber_deltas(
     managers. The channel queried is implicitly the YouTube identity selected
     during OAuth, so ``channel_id`` is taken on trust here.
     """
-    del channel_id  # implicit via OAuth identity
     creds = _get_credentials()
 
     async with httpx.AsyncClient(timeout=30.0) as client:
+        identity_resp = await client.get(
+            "https://www.googleapis.com/youtube/v3/channels",
+            params={"part": "snippet", "mine": "true"},
+            headers={"Authorization": f"Bearer {creds.token}"},
+        )
+        if identity_resp.is_success:
+            items = identity_resp.json().get("items", [])
+            if items:
+                resolved_id = items[0].get("id", "<unknown>")
+                resolved_title = items[0].get("snippet", {}).get("title", "<unknown>")
+                if resolved_id != channel_id:
+                    logger.warning(
+                        "OAuth resolved to channel %s (%s) — expected %s",
+                        resolved_title, resolved_id, channel_id,
+                    )
+                else:
+                    logger.info("OAuth identity confirmed: %s (%s)", resolved_title, resolved_id)
+            else:
+                logger.warning("OAuth identity has no YouTube channel (mine=true returned empty)")
+
         resp = await client.get(
             f"{YT_ANALYTICS_BASE}/reports",
             params={
