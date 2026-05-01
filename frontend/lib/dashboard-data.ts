@@ -97,6 +97,19 @@ export interface PhaseScopedData {
   lastUpdated: string;
 }
 
+export interface Episode {
+  videoId: string;
+  title: string;
+  publishedAt: string;
+  durationSeconds: number;
+  thumbnail: string;
+  views: number;
+  likes: number;
+  comments: number;
+  brand: string;
+  guest: string;
+}
+
 export interface DashboardData {
   budget: number;
   flightStart: string;
@@ -114,4 +127,5 @@ export interface DashboardData {
   subscribersCampaign?: SubscribersCampaign;
   phases?: Phase[];
   defaultPhaseId?: string;
+  episodes?: Episode[];
 }

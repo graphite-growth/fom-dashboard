@@ -23,6 +23,7 @@ import { PeriodChart } from "@/components/period-chart";
 import { PhaseSelector } from "@/components/phase-selector";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { RetentionChart } from "@/components/retention-chart";
+import { EpisodesSection } from "@/components/episodes-section";
 import { aggregateDaily, deltaPct, type PeriodPoint } from "@/lib/aggregate";
 
 function fmt(n: number) {
@@ -127,6 +128,7 @@ export default function App({
   const [active, setActive] = useState<DashboardSection>("views-daily");
   const headerLabelMap: Record<DashboardSection, string> = {
     "views-daily": "Daily Performance",
+    "views-episodes": "Episodes",
     "views-weekly": "Weekly Performance",
     "views-monthly": "Monthly Performance",
     "subscribers-overview": "Subscribers",
@@ -360,6 +362,8 @@ export default function App({
           <PeriodSection data={D} by="week" />
         ) : active === "views-monthly" ? (
           <PeriodSection data={D} by="month" />
+        ) : active === "views-episodes" ? (
+          <EpisodesSection episodes={D.episodes ?? []} />
         ) : phaseComputed ? (
         <div className="flex flex-col gap-4 p-4">
           {phaseLoading && <LoadingOverlay />}

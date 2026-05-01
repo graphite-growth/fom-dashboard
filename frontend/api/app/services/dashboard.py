@@ -261,6 +261,54 @@ def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | 
     return result
 
 
+def _build_episodes(
+    ytpd_rows: list[dict], video_ads_rows: list[dict]
+) -> list[dict]:
+    """Build the cards list for the Episodes tab.
+
+    Uses YouTube Data API rows as the source of truth (one per video on the
+    channel). Cross-references the FOM Google Ads ad names to attach `brand`
+    and `guest` fields where we have a match. Shorts (duration < 60s) are
+    excluded.
+    """
+    # Map each YouTube video to (brand, guest) via the matched ad name.
+    meta_by_video_id: dict[str, dict[str, str]] = {}
+    for row in video_ads_rows:
+        ad_name = row.get("Image ad name", row.get("Ad name", ""))
+        if not ad_name or " - " not in ad_name:
+            continue
+        company, guest = _extract_parts(ad_name)
+        yt_row = _match_ytpd_row(ad_name, ytpd_rows)
+        if not yt_row:
+            continue
+        video_id = yt_row.get("Video id", "")
+        if not video_id or video_id in meta_by_video_id:
+            continue
+        meta_by_video_id[video_id] = {"brand": company, "guest": guest}
+
+    episodes: list[dict] = []
+    for r in ytpd_rows:
+        duration = int(r.get("Duration seconds", 0))
+        if duration < 60:  # skip Shorts
+            continue
+        video_id = r.get("Video id", "")
+        meta = meta_by_video_id.get(video_id, {})
+        episodes.append({
+            "videoId": video_id,
+            "title": r.get("Video title", ""),
+            "publishedAt": r.get("Published at", ""),
+            "durationSeconds": duration,
+            "thumbnail": r.get("Thumbnail", ""),
+            "views": int(r.get("Views", 0)),
+            "likes": int(r.get("Likes", 0)),
+            "comments": int(r.get("Comments", 0)),
+            "brand": meta.get("brand", ""),
+            "guest": meta.get("guest", ""),
+        })
+    episodes.sort(key=lambda x: x["views"], reverse=True)
+    return episodes
+
+
 def _transform_demographics(
     age_rows: list[dict],
     gender_rows: list[dict],
@@ -519,6 +567,8 @@ def _transform(
         subs_ads_rows, subs_daily_agg, subscriber_history
     )
 
+    episodes = _build_episodes(ytpd_rows, video_ads_rows)
+
     return {
         "budget": DASHBOARD_BUDGET,
         "flightStart": DASHBOARD_FLIGHT_START,
@@ -533,6 +583,7 @@ def _transform(
         "projectedPublicViews": projected_public_views,
         "subscriberHistory": subscriber_history,
         "subscribersCampaign": subscribers_campaign,
+        "episodes": episodes,
     }
 
 
