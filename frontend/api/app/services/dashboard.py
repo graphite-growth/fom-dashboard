@@ -255,6 +255,7 @@ def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | 
             "pctOfViews": round(d["views"] / total_views, 4) if total_views > 0 else 0,
         }
         for label, d in agg.items()
+        if d["views"] > 0
     ]
     result.sort(key=lambda x: x["views"], reverse=True)
     return result
