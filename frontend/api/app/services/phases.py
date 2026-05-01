@@ -40,13 +40,27 @@ class Phase:
 
 
 # Hardcoded campaign structure. Update in code when phases are added.
-# - "All" uses the $5K lifetime cap
-# - "March–April" budget is the actual spend (campaign was a lump $2.5K plan, came in at $2,553.90)
-# - "May" budget is the remaining lifetime cap
+#
+# Budgets are the **Video Views** portion only — the Subscribers campaigns
+# (FOM - Subscribers - *) are partitioned to their own tab and excluded from
+# Views Daily Performance, so their spend doesn't belong in this pacing math.
+#
+# Video Views lifetime caps (from Google Ads):
+#   Company Size + Interests:  $1,771.22
+#   Channel Premium Whitelist:   $556.03
+#   Custom Intent Search:         $88.66
+#   Retargeting:                 $238.11
+#   ────────────────────────────────────
+#   Total:                     $2,654.02
+#
+# - "All" uses the Video Views lifetime cap ($2,654.02)
+# - "March–April" budget is the Video Views actual spend in that window
+#   ($1,839.02 = sum of Mar-Apr actuals across the 4 video campaigns)
+# - "May" budget is the remaining Video Views lifetime cap ($815.00)
 PHASES: list[Phase] = [
-    Phase(id="all", label="All", start="2026-03-24", end="2026-05-31", budget=5000.00),
-    Phase(id="phase-1", label="March–April", start="2026-03-24", end="2026-04-30", budget=2553.90),
-    Phase(id="phase-2", label="May", start="2026-05-01", end="2026-05-31", budget=2446.10),
+    Phase(id="all", label="All", start="2026-03-24", end="2026-05-31", budget=2654.02),
+    Phase(id="phase-1", label="March–April", start="2026-03-24", end="2026-04-30", budget=1839.02),
+    Phase(id="phase-2", label="May", start="2026-05-01", end="2026-05-31", budget=815.00),
 ]
 
 
