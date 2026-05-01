@@ -68,9 +68,6 @@ function VideoRow({ video, isBest }: { video: Video; isBest: boolean }) {
           {fmt(video.views)}
         </td>
         <td className="py-3.5 px-4 text-right text-sm tabular-nums">
-          {fmt(video.publicViews)}
-        </td>
-        <td className="py-3.5 px-4 text-right text-sm tabular-nums">
           {fmt(video.likes)}
         </td>
         <td className="py-3.5 px-4 text-right text-sm tabular-nums">
@@ -112,7 +109,6 @@ function VideoRow({ video, isBest }: { video: Video; isBest: boolean }) {
             <td className="py-2.5 px-4 text-right text-xs text-muted-foreground tabular-nums">
               {fmt(ag.views)}
             </td>
-            <td className="py-2.5 px-4 text-right text-xs text-muted-foreground" />
             <td className="py-2.5 px-4 text-right text-xs text-muted-foreground" />
             <td className="py-2.5 px-4 text-right text-xs text-muted-foreground" />
             <td className="py-2.5 px-4 text-right text-xs text-muted-foreground tabular-nums">
@@ -398,41 +394,24 @@ export default function App({
             </>
           )}
 
-          {/* Channel Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
-                  Public Views
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold tabular-nums">
-                  {fmt(phaseComputed.totalPublicViews)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Lifetime · long-form videos only
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-[11px] uppercase tracking-wider text-emerald-400/70 font-medium">
-                  {phaseComputed.isInProgress ? "Projected Paid Views" : "Final Paid Views"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold tabular-nums">
-                  {phaseComputed.isInProgress ? `~${fmt(phaseComputed.projectedPaidViews)}` : fmt(phaseComputed.totalViews)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {phaseComputed.isInProgress
-                    ? `Projection by ${phaseComputed.phaseEndShort} at current pace`
-                    : `${phaseComputed.phase.label} closed`}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+          {/* Projection */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[11px] uppercase tracking-wider text-emerald-400/70 font-medium">
+                {phaseComputed.isInProgress ? "Projected Paid Views" : "Final Paid Views"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold tabular-nums">
+                {phaseComputed.isInProgress ? `~${fmt(phaseComputed.projectedPaidViews)}` : fmt(phaseComputed.totalViews)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {phaseComputed.isInProgress
+                  ? `Projection by ${phaseComputed.phaseEndShort} at current pace`
+                  : `${phaseComputed.phase.label} closed`}
+              </p>
+            </CardContent>
+          </Card>
 
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -531,9 +510,6 @@ export default function App({
                       </th>
                       <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
                         Paid Views
-                      </th>
-                      <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
-                        YT Views
                       </th>
                       <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
                         Likes
