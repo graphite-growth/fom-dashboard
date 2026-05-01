@@ -259,6 +259,15 @@ export default function App({
             buildPoint("75%", (v) => v.q75 / v.views),
             buildPoint("100%", (v) => v.q100 / v.views),
           ];
+    const sumQ = (key: "q25" | "q50" | "q75" | "q100") =>
+      sortedVideos.reduce((s, v) => s + (v[key] ?? 0), 0);
+    const retentionTotals: Record<string, number> = {
+      Started: totalViews,
+      "25%": sumQ("q25"),
+      "50%": sumQ("q50"),
+      "75%": sumQ("q75"),
+      "100%": sumQ("q100"),
+    };
 
     const phaseEndShort = new Date(p.end + "T00:00:00").toLocaleDateString("en-US", {
       month: "short",
@@ -306,6 +315,7 @@ export default function App({
       demographics: phaseData.demographics,
       retentionData,
       retentionVideos,
+      retentionTotals,
       isInProgress: p.status === "in-progress",
       phaseEndShort,
     };
@@ -540,6 +550,7 @@ export default function App({
                 <RetentionChart
                   data={phaseComputed.retentionData}
                   videos={phaseComputed.retentionVideos}
+                  totals={phaseComputed.retentionTotals}
                 />
                 <p className="mt-3 text-[10px] text-muted-foreground">
                   % of paid viewers reaching each quartile, per episode. Hover for all values at a point.
