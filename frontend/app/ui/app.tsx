@@ -234,20 +234,31 @@ export default function App({
     );
     const sortedVideos = [...phaseData.videos].sort((a, b) => b.views - a.views);
 
-    // Aggregate retention curve: % of paid viewers reaching each quartile.
-    // q25/q50/q75/q100 are counts; total_views is the start (100%).
-    const sumQ = (key: "q25" | "q50" | "q75" | "q100") =>
-      phaseData.videos.reduce((s, v) => s + (v[key] ?? 0), 0);
+    // Per-video retention curves. Each chart point carries one numeric series
+    // per video (key = video name). Sorted by views desc so the legend lists
+    // top performers first. Videos with 0 views are excluded.
+    const retentionVideos = sortedVideos
+      .filter((v) => v.views > 0)
+      .map((v) => v.name);
+    const buildPoint = (label: string, getter: (v: Video) => number) => {
+      const point: { label: string } & Record<string, number | string> = { label };
+      for (const v of sortedVideos) {
+        if (v.views > 0) {
+          point[v.name] = getter(v);
+        }
+      }
+      return point;
+    };
     const retentionData =
-      totalViews > 0
-        ? [
-            { label: "Started", pct: 1, viewers: totalViews },
-            { label: "25%", pct: sumQ("q25") / totalViews, viewers: sumQ("q25") },
-            { label: "50%", pct: sumQ("q50") / totalViews, viewers: sumQ("q50") },
-            { label: "75%", pct: sumQ("q75") / totalViews, viewers: sumQ("q75") },
-            { label: "100%", pct: sumQ("q100") / totalViews, viewers: sumQ("q100") },
-          ]
-        : [];
+      retentionVideos.length === 0
+        ? []
+        : [
+            buildPoint("Started", () => 1),
+            buildPoint("25%", (v) => v.q25 / v.views),
+            buildPoint("50%", (v) => v.q50 / v.views),
+            buildPoint("75%", (v) => v.q75 / v.views),
+            buildPoint("100%", (v) => v.q100 / v.views),
+          ];
 
     const phaseEndShort = new Date(p.end + "T00:00:00").toLocaleDateString("en-US", {
       month: "short",
@@ -294,6 +305,7 @@ export default function App({
       daily: phaseData.daily,
       demographics: phaseData.demographics,
       retentionData,
+      retentionVideos,
       isInProgress: p.status === "in-progress",
       phaseEndShort,
     };
@@ -525,9 +537,12 @@ export default function App({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <RetentionChart data={phaseComputed.retentionData} />
+                <RetentionChart
+                  data={phaseComputed.retentionData}
+                  videos={phaseComputed.retentionVideos}
+                />
                 <p className="mt-3 text-[10px] text-muted-foreground">
-                  % of paid viewers reaching each quartile of the video. Hover for raw counts.
+                  % of paid viewers reaching each quartile, per episode. Hover for all values at a point.
                 </p>
               </CardContent>
             </Card>
