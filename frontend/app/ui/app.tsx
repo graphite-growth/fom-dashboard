@@ -339,13 +339,6 @@ export default function App({
             </h1>
           </div>
           <div className="ml-auto flex items-center gap-3 pr-4 text-xs text-muted-foreground">
-            <span>
-              {active === "views-daily" && phaseComputed
-                ? `${new Date(phaseComputed.phase.start + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${new Date(phaseComputed.phase.end + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-                : `${new Date(D.flightStart + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${new Date(D.flightEnd + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
-              {" · Updated "}
-              {new Date(D.lastUpdated).toLocaleDateString()}
-            </span>
             {active === "views-daily" && phasesList.length > 0 && (
               <PhaseSelector
                 phases={phasesList}
