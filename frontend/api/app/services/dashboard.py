@@ -286,10 +286,14 @@ def _build_episodes(
             continue
         meta_by_video_id[video_id] = {"brand": company, "guest": guest}
 
+    # FOM full episodes run 30+ minutes; anything under 3 minutes is a Short,
+    # clip, or teaser and shouldn't show on the Episodes tab.
+    MIN_EPISODE_SECONDS = 180
+
     episodes: list[dict] = []
     for r in ytpd_rows:
         duration = int(r.get("Duration seconds", 0))
-        if duration < 60:  # skip Shorts
+        if duration < MIN_EPISODE_SECONDS:
             continue
         video_id = r.get("Video id", "")
         meta = meta_by_video_id.get(video_id, {})
