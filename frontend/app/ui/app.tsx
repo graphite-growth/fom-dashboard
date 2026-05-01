@@ -22,6 +22,7 @@ import { NewSubsChart } from "@/components/new-subs-chart";
 import { PeriodChart } from "@/components/period-chart";
 import { PhaseSelector } from "@/components/phase-selector";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { RetentionChart } from "@/components/retention-chart";
 import { aggregateDaily, deltaPct, type PeriodPoint } from "@/lib/aggregate";
 
 function fmt(n: number) {
@@ -74,18 +75,6 @@ function VideoRow({ video, isBest }: { video: Video; isBest: boolean }) {
           {fmt(video.comments)}
         </td>
         <td className="py-3.5 px-4 text-right text-sm tabular-nums">
-          {fmt(video.q25)}
-        </td>
-        <td className="py-3.5 px-4 text-right text-sm tabular-nums">
-          {fmt(video.q50)}
-        </td>
-        <td className="py-3.5 px-4 text-right text-sm tabular-nums">
-          {fmt(video.q75)}
-        </td>
-        <td className="py-3.5 px-4 text-right text-sm tabular-nums">
-          {fmt(video.q100)}
-        </td>
-        <td className="py-3.5 px-4 text-right text-sm tabular-nums">
           {usd(video.cost)}
         </td>
         <td
@@ -111,18 +100,6 @@ function VideoRow({ video, isBest }: { video: Video; isBest: boolean }) {
             </td>
             <td className="py-2.5 px-4 text-right text-xs text-muted-foreground" />
             <td className="py-2.5 px-4 text-right text-xs text-muted-foreground" />
-            <td className="py-2.5 px-4 text-right text-xs text-muted-foreground tabular-nums">
-              {fmt(ag.q25)}
-            </td>
-            <td className="py-2.5 px-4 text-right text-xs text-muted-foreground tabular-nums">
-              {fmt(ag.q50)}
-            </td>
-            <td className="py-2.5 px-4 text-right text-xs text-muted-foreground tabular-nums">
-              {fmt(ag.q75)}
-            </td>
-            <td className="py-2.5 px-4 text-right text-xs text-muted-foreground tabular-nums">
-              {fmt(ag.q100)}
-            </td>
             <td className="py-2.5 px-4 text-right text-xs text-muted-foreground tabular-nums">
               {usd(ag.cost)}
             </td>
@@ -257,6 +234,21 @@ export default function App({
     );
     const sortedVideos = [...phaseData.videos].sort((a, b) => b.views - a.views);
 
+    // Aggregate retention curve: % of paid viewers reaching each quartile.
+    // q25/q50/q75/q100 are counts; total_views is the start (100%).
+    const sumQ = (key: "q25" | "q50" | "q75" | "q100") =>
+      phaseData.videos.reduce((s, v) => s + (v[key] ?? 0), 0);
+    const retentionData =
+      totalViews > 0
+        ? [
+            { label: "Started", pct: 1, viewers: totalViews },
+            { label: "25%", pct: sumQ("q25") / totalViews, viewers: sumQ("q25") },
+            { label: "50%", pct: sumQ("q50") / totalViews, viewers: sumQ("q50") },
+            { label: "75%", pct: sumQ("q75") / totalViews, viewers: sumQ("q75") },
+            { label: "100%", pct: sumQ("q100") / totalViews, viewers: sumQ("q100") },
+          ]
+        : [];
+
     const phaseEndShort = new Date(p.end + "T00:00:00").toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -301,6 +293,7 @@ export default function App({
       fillColor,
       daily: phaseData.daily,
       demographics: phaseData.demographics,
+      retentionData,
       isInProgress: p.status === "in-progress",
       phaseEndShort,
     };
@@ -499,18 +492,6 @@ export default function App({
                         Comments
                       </th>
                       <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
-                        25%
-                      </th>
-                      <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
-                        50%
-                      </th>
-                      <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
-                        75%
-                      </th>
-                      <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
-                        100%
-                      </th>
-                      <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
                         Spend
                       </th>
                       <th className="text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium py-2.5 px-4">
@@ -534,6 +515,23 @@ export default function App({
               </div>
             </CardContent>
           </Card>
+
+          {/* Retention */}
+          {phaseComputed.retentionData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                  Retention
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RetentionChart data={phaseComputed.retentionData} />
+                <p className="mt-3 text-[10px] text-muted-foreground">
+                  % of paid viewers reaching each quartile of the video. Hover for raw counts.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Demographics */}
           {phaseComputed.demographics && (
