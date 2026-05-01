@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppSidebar, type DashboardSection } from "@/components/app-sidebar";
 import {
   SidebarInset,
@@ -9,11 +10,18 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { DashboardData, DemographicRow, Video } from "@/lib/dashboard-data";
+import type {
+  DashboardData,
+  DemographicRow,
+  PhaseScopedData,
+  Video,
+} from "@/lib/dashboard-data";
 import { DailyChart } from "@/components/daily-chart";
 import { SubscribersChart } from "@/components/subscribers-chart";
 import { NewSubsChart } from "@/components/new-subs-chart";
 import { PeriodChart } from "@/components/period-chart";
+import { PhaseSelector } from "@/components/phase-selector";
+import { LoadingOverlay } from "@/components/loading-overlay";
 import { aggregateDaily, deltaPct, type PeriodPoint } from "@/lib/aggregate";
 
 function fmt(n: number) {
@@ -143,62 +151,132 @@ export default function App({
   user: { name: string; email: string; image: string };
   data: DashboardData;
 }) {
-  const computed = useMemo(() => {
-    const totalViews = D.videos.reduce((s, v) => s + v.views, 0);
-    const totalSpend = D.videos.reduce((s, v) => s + v.cost, 0);
-    const totalImpressions = D.videos.reduce((s, v) => s + v.impressions, 0);
-    const totalPublicViews = D.videos.reduce((s, v) => s + v.publicViews, 0);
-    const avgCPV = totalViews > 0 ? totalSpend / totalViews : 0;
-    const overallViewRate = totalImpressions > 0 ? totalViews / totalImpressions : 0;
-    const budgetPct = D.budget > 0 ? (totalSpend / D.budget) * 100 : 0;
+  const [active, setActive] = useState<DashboardSection>("views-daily");
+  const headerLabelMap: Record<DashboardSection, string> = {
+    "views-daily": "Daily Performance",
+    "views-weekly": "Weekly Performance",
+    "views-monthly": "Monthly Performance",
+    "subscribers-overview": "Subscribers",
+  };
+  const headerLabel = headerLabelMap[active];
 
-    const flightStart = new Date(D.flightStart + "T00:00:00");
-    const flightEnd = new Date(D.flightEnd + "T23:59:59");
-    const now = new Date(D.lastUpdated);
-    const totalDays = Math.ceil(
-      (flightEnd.getTime() - flightStart.getTime()) / (1000 * 60 * 60 * 24)
+  // Phase selector state (only used by Views Daily Performance)
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const phasesList = D.phases ?? [];
+  const phaseFromUrl = searchParams.get("phase");
+  const initialPhaseId =
+    (phaseFromUrl && phasesList.some((p) => p.id === phaseFromUrl) ? phaseFromUrl : null) ??
+    D.defaultPhaseId ??
+    phasesList[0]?.id ??
+    "";
+  const [selectedPhaseId, setSelectedPhaseId] = useState(initialPhaseId);
+  const [phaseData, setPhaseData] = useState<PhaseScopedData | null>(null);
+  const [phaseLoading, setPhaseLoading] = useState(true);
+
+  useEffect(() => {
+    if (!selectedPhaseId) return;
+    let cancelled = false;
+    const run = async () => {
+      setPhaseLoading(true);
+      try {
+        const r = await fetch(`/api/v1/dashboard/phase/${selectedPhaseId}`, {
+          credentials: "include",
+        });
+        const data: PhaseScopedData | null = r.ok ? await r.json() : null;
+        if (!cancelled) {
+          setPhaseData(data);
+          setPhaseLoading(false);
+        }
+      } catch {
+        if (!cancelled) setPhaseLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPhaseId]);
+
+  const handlePhaseChange = (id: string) => {
+    setSelectedPhaseId(id);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("phase", id);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
+
+  const phaseComputed = useMemo(() => {
+    if (!phaseData) return null;
+    const p = phaseData.phase;
+    const totalViews = phaseData.totalPaidViews;
+    const totalSpend = phaseData.totalSpend;
+    const totalImpressions = phaseData.totalImpressions;
+    const totalPublicViews = phaseData.totalPublicViews;
+    const avgCPV = phaseData.avgCPV;
+    const overallViewRate = totalImpressions > 0 ? totalViews / totalImpressions : 0;
+    const budgetPct = p.budget > 0 ? (totalSpend / p.budget) * 100 : 0;
+
+    const phaseStart = new Date(p.start + "T00:00:00");
+    const phaseEnd = new Date(p.end + "T23:59:59");
+    const now = new Date(phaseData.lastUpdated);
+    const totalDays = Math.max(
+      1,
+      Math.ceil((phaseEnd.getTime() - phaseStart.getTime()) / (1000 * 60 * 60 * 24)),
     );
     const daysElapsed = Math.max(
       1,
-      Math.ceil(
-        (now.getTime() - flightStart.getTime()) / (1000 * 60 * 60 * 24)
-      )
+      Math.min(
+        totalDays,
+        Math.ceil((now.getTime() - phaseStart.getTime()) / (1000 * 60 * 60 * 24)),
+      ),
     );
     const daysRemaining = Math.max(0, totalDays - daysElapsed);
-    const expectedPacePct = totalDays > 0 ? (daysElapsed / totalDays) * 100 : 0;
+    const expectedPacePct = (daysElapsed / totalDays) * 100;
     const dailySpendRate = totalSpend / daysElapsed;
     const neededDailySpend =
-      daysRemaining > 0 ? (D.budget - totalSpend) / daysRemaining : 0;
-    const projectedPaidViews = D.projectedPaidViews ?? 0;
-
+      daysRemaining > 0 ? Math.max(0, p.budget - totalSpend) / daysRemaining : 0;
+    const projectedPaidViews = phaseData.projectedPaidViews;
     const paceRatio = expectedPacePct > 0 ? budgetPct / expectedPacePct : 1;
-    const bestVideo = D.videos.reduce(
-      (best, v) =>
-        v.views > best.views || (v.views === best.views && v.cpv < best.cpv)
-          ? v
-          : best,
-      D.videos[0]
-    );
-    const sortedVideos = [...D.videos].sort((a, b) => b.views - a.views);
 
-    let statusClass: string;
-    let statusMsg: string;
-    let statusDetail: string;
-    if (paceRatio >= 0.80 && paceRatio <= 1.20) {
-      statusClass =
-        "bg-emerald-400/8 border-emerald-400/20 text-emerald-400";
-      statusMsg = `On track — projected ${fmt(projectedPaidViews)} paid views by Apr 30`;
-      statusDetail = `${fmt(daysRemaining)} days left · ${usd(neededDailySpend)}/day needed`;
-    } else if (paceRatio < 0.80) {
+    const fallback: Video = phaseData.videos[0] ?? {
+      name: "",
+      views: 0,
+      cost: 0,
+      cpv: 0,
+      impressions: 0,
+      viewRate: 0,
+      publicViews: 0,
+      likes: 0,
+      comments: 0,
+      q25: 0,
+      q50: 0,
+      q75: 0,
+      q100: 0,
+      adGroups: [],
+    };
+    const bestVideo = phaseData.videos.reduce(
+      (best, v) =>
+        v.views > best.views || (v.views === best.views && v.cpv < best.cpv) ? v : best,
+      fallback,
+    );
+    const sortedVideos = [...phaseData.videos].sort((a, b) => b.views - a.views);
+
+    const phaseEndShort = new Date(p.end + "T00:00:00").toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    let statusClass = "bg-emerald-400/8 border-emerald-400/20 text-emerald-400";
+    let statusMsg = `On track — projected ${fmt(projectedPaidViews)} paid views by ${phaseEndShort}`;
+    let statusDetail = `${fmt(daysRemaining)} days left · ${usd(neededDailySpend)}/day needed`;
+    if (paceRatio < 0.8) {
       statusClass = "bg-amber-400/8 border-amber-400/20 text-amber-400";
       statusMsg = `Underpacing — increase daily budget to ${usd(neededDailySpend)}/day`;
       statusDetail = `${fmt(daysRemaining)} days left · Currently spending ${usd(dailySpendRate)}/day`;
-    } else {
+    } else if (paceRatio > 1.2) {
       statusClass = "bg-red-400/8 border-red-400/20 text-red-400";
       statusMsg = "Overpacing — budget will run out early at current rate";
       statusDetail = `${fmt(daysRemaining)} days left · Currently spending ${usd(dailySpendRate)}/day`;
     }
-
     const fillColor = () => {
       if (paceRatio > 1.15) return "bg-red-400";
       if (paceRatio < 0.85) return "bg-amber-400";
@@ -206,6 +284,7 @@ export default function App({
     };
 
     return {
+      phase: p,
       totalViews,
       totalSpend,
       totalImpressions,
@@ -224,38 +303,12 @@ export default function App({
       statusMsg,
       statusDetail,
       fillColor,
+      daily: phaseData.daily,
+      demographics: phaseData.demographics,
+      isInProgress: p.status === "in-progress",
+      phaseEndShort,
     };
-  }, [D]);
-
-  const {
-    totalViews,
-    totalSpend,
-    totalImpressions,
-    totalPublicViews,
-    avgCPV,
-    overallViewRate,
-    budgetPct,
-    daysRemaining,
-    expectedPacePct,
-    dailySpendRate,
-    neededDailySpend,
-    bestVideo,
-    sortedVideos,
-    projectedPaidViews,
-    statusClass,
-    statusMsg,
-    statusDetail,
-    fillColor,
-  } = computed;
-
-  const [active, setActive] = useState<DashboardSection>("views-daily");
-  const headerLabelMap: Record<DashboardSection, string> = {
-    "views-daily": "Daily Performance",
-    "views-weekly": "Weekly Performance",
-    "views-monthly": "Monthly Performance",
-    "subscribers-overview": "Subscribers",
-  };
-  const headerLabel = headerLabelMap[active];
+  }, [phaseData]);
 
   return (
     <SidebarProvider>
@@ -272,9 +325,21 @@ export default function App({
               FOM <span className="text-emerald-400">{headerLabel}</span>
             </h1>
           </div>
-          <div className="ml-auto pr-4 text-xs text-muted-foreground">
-            {new Date(D.flightStart + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} – {new Date(D.flightEnd + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · Updated{" "}
-            {new Date(D.lastUpdated).toLocaleDateString()}
+          <div className="ml-auto flex items-center gap-3 pr-4 text-xs text-muted-foreground">
+            <span>
+              {active === "views-daily" && phaseComputed
+                ? `${new Date(phaseComputed.phase.start + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${new Date(phaseComputed.phase.end + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                : `${new Date(D.flightStart + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${new Date(D.flightEnd + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+              {" · Updated "}
+              {new Date(D.lastUpdated).toLocaleDateString()}
+            </span>
+            {active === "views-daily" && phasesList.length > 0 && (
+              <PhaseSelector
+                phases={phasesList}
+                value={selectedPhaseId}
+                onChange={handlePhaseChange}
+              />
+            )}
           </div>
         </header>
 
@@ -284,49 +349,54 @@ export default function App({
           <PeriodSection data={D} by="week" />
         ) : active === "views-monthly" ? (
           <PeriodSection data={D} by="month" />
-        ) : (
+        ) : phaseComputed ? (
         <div className="flex flex-col gap-4 p-4">
-          {/* Status Banner */}
-          <div
-            className={`rounded-lg border px-6 py-3.5 text-sm font-medium flex justify-between items-center ${statusClass}`}
-          >
-            <span>{statusMsg}</span>
-            <span className="text-xs font-normal opacity-80">
-              {statusDetail}
-            </span>
-          </div>
+          {phaseLoading && <LoadingOverlay />}
 
-          {/* Budget Bar */}
-          <Card>
-            <CardContent className="pt-5 pb-4">
-              <div className="flex justify-between mb-3 text-xs">
-                <span className="font-semibold">
-                  {usd(totalSpend)} spent ({budgetPct.toFixed(1)}%)
-                </span>
-                <span className="text-muted-foreground">
-                  ${fmt(D.budget)} monthly budget
-                </span>
-              </div>
-              <div className="relative w-full h-1 bg-muted rounded-full">
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ease-out ${fillColor()}`}
-                  style={{ width: `${Math.min(budgetPct, 100)}%` }}
-                />
-                <div
-                  className="absolute -top-1 w-0.5 h-3 bg-muted-foreground rounded-sm"
-                  style={{ left: `${Math.min(expectedPacePct, 100)}%` }}
-                  title="Expected pace"
-                />
-              </div>
-              <div className="flex justify-between mt-2 text-[10px] text-muted-foreground">
-                <span>{fmt(daysRemaining)} days remaining</span>
-                <span>
-                  {usd(dailySpendRate)}/day avg · {usd(neededDailySpend)}
-                  /day needed
+          {phaseComputed.isInProgress && (
+            <>
+              {/* Status Banner */}
+              <div
+                className={`rounded-lg border px-6 py-3.5 text-sm font-medium flex justify-between items-center ${phaseComputed.statusClass}`}
+              >
+                <span>{phaseComputed.statusMsg}</span>
+                <span className="text-xs font-normal opacity-80">
+                  {phaseComputed.statusDetail}
                 </span>
               </div>
-            </CardContent>
-          </Card>
+
+              {/* Budget Bar */}
+              <Card>
+                <CardContent className="pt-5 pb-4">
+                  <div className="flex justify-between mb-3 text-xs">
+                    <span className="font-semibold">
+                      {usd(phaseComputed.totalSpend)} spent ({phaseComputed.budgetPct.toFixed(1)}%)
+                    </span>
+                    <span className="text-muted-foreground">
+                      ${fmt(phaseComputed.phase.budget)} {phaseComputed.phase.label} budget
+                    </span>
+                  </div>
+                  <div className="relative w-full h-1 bg-muted rounded-full">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ease-out ${phaseComputed.fillColor()}`}
+                      style={{ width: `${Math.min(phaseComputed.budgetPct, 100)}%` }}
+                    />
+                    <div
+                      className="absolute -top-1 w-0.5 h-3 bg-muted-foreground rounded-sm"
+                      style={{ left: `${Math.min(phaseComputed.expectedPacePct, 100)}%` }}
+                      title="Expected pace"
+                    />
+                  </div>
+                  <div className="flex justify-between mt-2 text-[10px] text-muted-foreground">
+                    <span>{fmt(phaseComputed.daysRemaining)} days remaining</span>
+                    <span>
+                      {usd(phaseComputed.dailySpendRate)}/day avg · {usd(phaseComputed.neededDailySpend)}/day needed
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
 
           {/* Channel Stats */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -338,25 +408,27 @@ export default function App({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tabular-nums">
-                  {fmt(totalPublicViews)}
+                  {fmt(phaseComputed.totalPublicViews)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Long-form videos only
+                  Lifetime · long-form videos only
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-[11px] uppercase tracking-wider text-emerald-400/70 font-medium">
-                  Projected Paid Views
+                  {phaseComputed.isInProgress ? "Projected Paid Views" : "Final Paid Views"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tabular-nums">
-                  ~{fmt(projectedPaidViews)}
+                  {phaseComputed.isInProgress ? `~${fmt(phaseComputed.projectedPaidViews)}` : fmt(phaseComputed.totalViews)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Projection by {new Date(D.flightEnd + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} at current pace
+                  {phaseComputed.isInProgress
+                    ? `Projection by ${phaseComputed.phaseEndShort} at current pace`
+                    : `${phaseComputed.phase.label} closed`}
                 </p>
               </CardContent>
             </Card>
@@ -372,10 +444,10 @@ export default function App({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tabular-nums">
-                  {fmt(totalViews)}
+                  {fmt(phaseComputed.totalViews)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {fmt(totalImpressions)} impressions
+                  {fmt(phaseComputed.totalImpressions)} impressions
                 </p>
               </CardContent>
             </Card>
@@ -387,9 +459,9 @@ export default function App({
               </CardHeader>
               <CardContent>
                 <div
-                  className={`text-2xl font-semibold tabular-nums ${cpvColor(avgCPV)}`}
+                  className={`text-2xl font-semibold tabular-nums ${cpvColor(phaseComputed.avgCPV)}`}
                 >
-                  ${avgCPV.toFixed(2)}
+                  ${phaseComputed.avgCPV.toFixed(2)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Target: <span className="text-emerald-400">$0.02-$0.03</span>
@@ -404,7 +476,7 @@ export default function App({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tabular-nums">
-                  {pct(overallViewRate)}
+                  {pct(phaseComputed.overallViewRate)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Views / Impressions
@@ -419,10 +491,12 @@ export default function App({
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-semibold tabular-nums">
-                  {usd(totalSpend)}
+                  {usd(phaseComputed.totalSpend)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {usd(D.budget - totalSpend)} remaining
+                  {phaseComputed.isInProgress
+                    ? `${usd(Math.max(0, phaseComputed.phase.budget - phaseComputed.totalSpend))} remaining`
+                    : `${phaseComputed.phase.label} final`}
                 </p>
               </CardContent>
             </Card>
@@ -436,7 +510,7 @@ export default function App({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <DailyChart data={D.daily} />
+              <DailyChart data={phaseComputed.daily} />
             </CardContent>
           </Card>
 
@@ -491,11 +565,11 @@ export default function App({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/50">
-                    {sortedVideos.map((v) => (
+                    {phaseComputed.sortedVideos.map((v) => (
                       <VideoRow
                         key={v.name}
                         video={v}
-                        isBest={v === bestVideo}
+                        isBest={v === phaseComputed.bestVideo}
                       />
                     ))}
                   </tbody>
@@ -505,14 +579,14 @@ export default function App({
           </Card>
 
           {/* Demographics */}
-          {D.demographics && (
+          {phaseComputed.demographics && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(
                 [
-                  ["Age", D.demographics.age],
-                  ["Gender", D.demographics.gender],
-                  ["Device", D.demographics.device],
-                  ["DMA Region", D.demographics.geo],
+                  ["Age", phaseComputed.demographics.age],
+                  ["Gender", phaseComputed.demographics.gender],
+                  ["Device", phaseComputed.demographics.device],
+                  ["DMA Region", phaseComputed.demographics.geo],
                 ] as [string, DemographicRow[]][]
               ).map(([title, rows]) => (
                 <Card key={title}>
@@ -549,6 +623,8 @@ export default function App({
             Powered by Graphite
           </p>
         </div>
+        ) : (
+          <LoadingOverlay />
         )}
       </SidebarInset>
     </SidebarProvider>

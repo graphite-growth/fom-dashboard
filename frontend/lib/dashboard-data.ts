@@ -72,6 +72,31 @@ export interface SubscribersCampaign {
   daily: SubscribersDailyPoint[];
 }
 
+export type PhaseStatus = "closed" | "in-progress";
+
+export interface Phase {
+  id: string;
+  label: string;
+  start: string;
+  end: string;
+  budget: number;
+  status: PhaseStatus;
+}
+
+export interface PhaseScopedData {
+  phase: Phase;
+  videos: Video[];
+  daily: DailyData[];
+  demographics: Demographics;
+  totalPaidViews: number;
+  totalSpend: number;
+  totalImpressions: number;
+  totalPublicViews: number;
+  avgCPV: number;
+  projectedPaidViews: number;
+  lastUpdated: string;
+}
+
 export interface DashboardData {
   budget: number;
   flightStart: string;
@@ -87,4 +112,6 @@ export interface DashboardData {
   subscriberHistory?: SubscriberSnapshot[];
   demographics?: Demographics;
   subscribersCampaign?: SubscribersCampaign;
+  phases?: Phase[];
+  defaultPhaseId?: string;
 }

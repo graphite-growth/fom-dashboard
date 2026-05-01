@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any
 
-from app.services import google_ads, youtube
+from app.services import google_ads, phases, youtube
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +32,15 @@ ACCOUNT_TZ = ZoneInfo("America/Chicago")
 def _is_subs_campaign(name: object) -> bool:
     return isinstance(name, str) and name.startswith(SUBSCRIBERS_CAMPAIGN_PREFIX)
 
-# Simple TTL cache
+# Simple TTL cache for the main /dashboard payload
 _cache: dict[str, Any] | None = None
 _cache_time: float = 0
-CACHE_TTL = 900  # 15 minutes
+CACHE_TTL = 900  # 15 minutes — current/in-progress data
+
+# Per-phase cache: { phase_id: (data, cached_at) }
+_phase_cache: dict[str, tuple[dict[str, Any], float]] = {}
+PHASE_CACHE_TTL_INPROGRESS = 900  # 15 minutes
+PHASE_CACHE_TTL_CLOSED = 86400  # 24 hours — closed phases don't change
 
 # Daily subscriber count exported from YouTube Studio Analytics. Used as the
 # source of truth because OAuth-based YouTube Analytics API access requires
@@ -526,6 +531,36 @@ def _transform(
     }
 
 
+async def _fetch_raw(start_date: str, end_date: str) -> tuple[
+    list[dict], list[dict], list[dict], list[dict], list[dict], list[dict], list[dict], list[dict]
+]:
+    """Run all Google Ads + YouTube queries in parallel, return parsed rows.
+
+    Returns: (ads, daily, youtube_videos, youtube_channel, age, gender, device, geo).
+    Failures per-query are logged and yield empty lists rather than raising.
+    """
+    results = await asyncio.gather(
+        google_ads.fetch_ad_performance(GOOGLE_ADS_ACCOUNT_ID, start_date, end_date),
+        google_ads.fetch_daily_breakdown(GOOGLE_ADS_ACCOUNT_ID, start_date, end_date),
+        youtube.fetch_channel_videos(YOUTUBE_CHANNEL_ID),
+        youtube.fetch_channel_stats(YOUTUBE_CHANNEL_ID),
+        google_ads.fetch_age_demographics(GOOGLE_ADS_ACCOUNT_ID, start_date, end_date),
+        google_ads.fetch_gender_demographics(GOOGLE_ADS_ACCOUNT_ID, start_date, end_date),
+        google_ads.fetch_device_demographics(GOOGLE_ADS_ACCOUNT_ID, start_date, end_date),
+        google_ads.fetch_geo_demographics(GOOGLE_ADS_ACCOUNT_ID, start_date, end_date),
+        return_exceptions=True,
+    )
+    unpacked: list[list[dict]] = []
+    labels = ["ads", "daily", "youtube_videos", "youtube_channel", "age", "gender", "device", "geo"]
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            logger.error("Query %s failed: %s", labels[i], r)
+            unpacked.append([])
+        else:
+            unpacked.append(r)  # type: ignore[arg-type]
+    return tuple(unpacked)  # type: ignore[return-value]
+
+
 async def get_dashboard_data() -> dict[str, Any]:
     """Fetch dashboard data from Google Ads and YouTube APIs with caching."""
     global _cache, _cache_time
@@ -537,38 +572,102 @@ async def get_dashboard_data() -> dict[str, Any]:
 
     today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
 
-    # Fetch all data in parallel from Google Ads REST API and YouTube Data API
-    results = await asyncio.gather(
-        google_ads.fetch_ad_performance(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
-        google_ads.fetch_daily_breakdown(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
-        youtube.fetch_channel_videos(YOUTUBE_CHANNEL_ID),
-        youtube.fetch_channel_stats(YOUTUBE_CHANNEL_ID),
-        google_ads.fetch_age_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
-        google_ads.fetch_gender_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
-        google_ads.fetch_device_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
-        google_ads.fetch_geo_demographics(GOOGLE_ADS_ACCOUNT_ID, DASHBOARD_FLIGHT_START, today),
-        return_exceptions=True,
+    ads_rows, ads_daily_rows, ytpd_rows, channel_stats, age_rows, gender_rows, device_rows, geo_rows = (
+        await _fetch_raw(DASHBOARD_FLIGHT_START, today)
     )
-
-    # Unpack results, replacing exceptions with empty lists
-    unpacked: list[list[dict]] = []
-    labels = ["ads", "daily", "youtube_videos", "youtube_channel", "age", "gender", "device", "geo"]
-    for i, r in enumerate(results):
-        if isinstance(r, Exception):
-            logger.error("Query %s failed: %s", labels[i], r)
-            unpacked.append([])
-        else:
-            unpacked.append(r)
-
-    ads_rows, ads_daily_rows, ytpd_rows, channel_stats, age_rows, gender_rows, device_rows, geo_rows = unpacked
 
     demographics = _transform_demographics(age_rows, gender_rows, device_rows, geo_rows)
 
     result = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats)
     result["demographics"] = demographics
+    result["phases"] = [p.to_dict(today) for p in phases.all_phases()]
+    result["defaultPhaseId"] = phases.default_phase_id(today)
 
     _cache = result
     _cache_time = now
     logger.info("Dashboard data refreshed and cached")
 
+    return result
+
+
+def _transform_phase(
+    ads_rows: list[dict],
+    ads_daily_rows: list[dict],
+    ytpd_rows: list[dict],
+    age_rows: list[dict],
+    gender_rows: list[dict],
+    device_rows: list[dict],
+    geo_rows: list[dict],
+    phase: phases.Phase,
+) -> dict[str, Any]:
+    """Transform raw rows into the phase-scoped payload.
+
+    Slimmer than `_transform`: drops subscribers-campaign and full subscriber history
+    since those are global concerns shown on a different tab. YouTube public views
+    are still lifetime totals from YTPD (per-video, date-bound public-view data is a
+    separate follow-up — see todo.md).
+    """
+    base = _transform(ads_rows, ads_daily_rows, ytpd_rows, channel_stats=None)
+    videos = base["videos"]
+    daily = base["daily"]
+
+    total_paid_views = sum(v["views"] for v in videos)
+    total_spend = sum(v["cost"] for v in videos)
+    total_impressions = sum(v["impressions"] for v in videos)
+    total_public_views = sum(v.get("publicViews", 0) for v in videos)
+    avg_cpv = total_spend / total_paid_views if total_paid_views > 0 else 0.0
+
+    # Projection only meaningful for in-progress phases.
+    today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
+    projected_paid_views = 0
+    if phase.status(today) == "in-progress" and avg_cpv > 0:
+        projected_paid_views = round(phase.budget / avg_cpv)
+
+    return {
+        "phase": phase.to_dict(today),
+        "videos": videos,
+        "daily": daily,
+        "demographics": _transform_demographics(age_rows, gender_rows, device_rows, geo_rows),
+        "totalPaidViews": total_paid_views,
+        "totalSpend": round(total_spend, 2),
+        "totalImpressions": total_impressions,
+        "totalPublicViews": total_public_views,
+        "avgCPV": round(avg_cpv, 4),
+        "projectedPaidViews": projected_paid_views,
+        "lastUpdated": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def get_phase_data(phase_id: str) -> dict[str, Any] | None:
+    """Fetch phase-scoped dashboard data with per-phase caching.
+
+    Returns None if phase_id is unknown.
+    """
+    phase = phases.get_phase(phase_id)
+    if phase is None:
+        return None
+
+    today = datetime.now(ACCOUNT_TZ).strftime("%Y-%m-%d")
+    status = phase.status(today)
+    ttl = PHASE_CACHE_TTL_CLOSED if status == "closed" else PHASE_CACHE_TTL_INPROGRESS
+
+    cached = _phase_cache.get(phase_id)
+    now = time.time()
+    if cached is not None:
+        data, cached_at = cached
+        if (now - cached_at) < ttl:
+            logger.info("Returning cached phase data for %s", phase_id)
+            return data
+
+    # Don't query past today even if phase end is in the future
+    end_date = min(phase.end, today)
+    ads_rows, ads_daily_rows, ytpd_rows, _channel_stats, age_rows, gender_rows, device_rows, geo_rows = (
+        await _fetch_raw(phase.start, end_date)
+    )
+
+    result = _transform_phase(
+        ads_rows, ads_daily_rows, ytpd_rows, age_rows, gender_rows, device_rows, geo_rows, phase
+    )
+    _phase_cache[phase_id] = (result, now)
+    logger.info("Phase data refreshed and cached: %s", phase_id)
     return result
