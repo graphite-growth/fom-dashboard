@@ -411,7 +411,7 @@ export default function App({
                   {fmt(phaseComputed.totalPublicViews)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Long-form videos only
+                  Lifetime · long-form videos only
                 </p>
               </CardContent>
             </Card>

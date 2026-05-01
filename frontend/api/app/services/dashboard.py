@@ -255,7 +255,6 @@ def _build_demographic_rows(rows: list[dict], label_key: str, label_map: dict | 
             "pctOfViews": round(d["views"] / total_views, 4) if total_views > 0 else 0,
         }
         for label, d in agg.items()
-        if d["views"] > 0
     ]
     result.sort(key=lambda x: x["views"], reverse=True)
     return result
@@ -359,7 +358,6 @@ def _transform(
         adgroup_raw = row.get("Ad group name", row.get("Ad group", "Unknown"))
         adgroup = AD_GROUP_DISPLAY_NAMES.get(adgroup_raw, adgroup_raw)
         views = int(row.get("Video views", 0))
-        public_video_views = int(row.get("Public video views", 0))
         cost = float(row.get("Cost (USD)", row.get("Cost", 0)))
         impressions = int(row.get("Impressions", 0))
         q25 = round(views * float(row.get("Watch 25% rate", 0)))
@@ -382,7 +380,6 @@ def _transform(
                 "name": display_name,
                 "raw_name": ad_name,
                 "views": 0,
-                "publicVideoViews": 0,
                 "cost": 0.0,
                 "impressions": 0,
                 "q25": 0,
@@ -393,7 +390,6 @@ def _transform(
             }
         c = episodes[display_name]
         c["views"] += views
-        c["publicVideoViews"] += public_video_views
         c["cost"] += cost
         c["impressions"] += impressions
         c["q25"] += q25
@@ -429,10 +425,7 @@ def _transform(
         total_impressions = c["impressions"]
         cpv = total_cost / total_views if total_views > 0 else 0
         view_rate = total_views / total_impressions if total_impressions > 0 else 0
-        # Use Google Ads's date-aware "YouTube public views" metric so the number
-        # matches the Google Ads UI for the selected date range. Falls back to YTPD
-        # lifetime totals only if the GAQL value is 0 (e.g., older campaigns).
-        public_views = c["publicVideoViews"] or _match_public_views(c["raw_name"], ytpd_rows)
+        public_views = _match_public_views(c["raw_name"], ytpd_rows)
         likes, comments = _match_engagement(c["raw_name"], ytpd_rows)
 
         ad_groups = []
