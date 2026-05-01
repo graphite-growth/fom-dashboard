@@ -271,6 +271,14 @@ def _build_episodes(
     and `guest` fields where we have a match. Shorts (duration < 60s) are
     excluded.
     """
+    # Manual metadata overrides for episodes the ad-name matcher can't reach
+    # (no matching Google Ads campaign, or YouTube title doesn't contain the
+    # guest name). Key is a lowercase substring that uniquely identifies the
+    # video title; value is the {brand, guest} pair to display on the card.
+    manual_meta: list[tuple[str, dict[str, str]]] = [
+        ("customer obsession", {"brand": "Square", "guest": "Lindsey Irvine"}),
+        ("marketing ai that protects", {"brand": "Verkada", "guest": "Idan Koren"}),
+    ]
     # Map each YouTube video to (brand, guest) via the matched ad name.
     meta_by_video_id: dict[str, dict[str, str]] = {}
     for row in video_ads_rows:
@@ -297,6 +305,12 @@ def _build_episodes(
             continue
         video_id = r.get("Video id", "")
         meta = meta_by_video_id.get(video_id, {})
+        if not meta:
+            title_lower = r.get("Video title", "").lower()
+            for needle, override in manual_meta:
+                if needle in title_lower:
+                    meta = override
+                    break
         episodes.append({
             "videoId": video_id,
             "title": r.get("Video title", ""),
