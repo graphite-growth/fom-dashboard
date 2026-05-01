@@ -100,11 +100,14 @@ export function RetentionChart({ data, videos, totals }: RetentionChartProps) {
         className="mt-1 flex justify-between pl-[60px] pr-[10px] text-[10px] tabular-nums"
         style={{ color: LABEL }}
       >
-        {data.map((point) => (
-          <span key={point.label} className="text-center">
-            {totals[point.label]?.toLocaleString("en-US") ?? "—"}
-          </span>
-        ))}
+        {data.map((point) => {
+          const n = totals[point.label];
+          return (
+            <span key={point.label} className="text-center">
+              {n != null ? `${n.toLocaleString("en-US")} views` : "—"}
+            </span>
+          );
+        })}
       </div>
 
       {/* Custom legend (rendered below the totals row). */}
