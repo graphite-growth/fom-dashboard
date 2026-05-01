@@ -394,25 +394,6 @@ export default function App({
             </>
           )}
 
-          {/* Projection */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[11px] uppercase tracking-wider text-emerald-400/70 font-medium">
-                {phaseComputed.isInProgress ? "Projected Paid Views" : "Final Paid Views"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold tabular-nums">
-                {phaseComputed.isInProgress ? `~${fmt(phaseComputed.projectedPaidViews)}` : fmt(phaseComputed.totalViews)}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {phaseComputed.isInProgress
-                  ? `Projection by ${phaseComputed.phaseEndShort} at current pace`
-                  : `${phaseComputed.phase.label} closed`}
-              </p>
-            </CardContent>
-          </Card>
-
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
