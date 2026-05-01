@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CalendarRange,
   ChevronRight,
+  PlaySquare,
   Users,
 } from "lucide-react"
 
@@ -36,6 +37,7 @@ import {
 
 export type DashboardSection =
   | "views-daily"
+  | "views-episodes"
   | "views-weekly"
   | "views-monthly"
   | "subscribers-overview"
@@ -58,6 +60,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: BarChart3,
     items: [
       { id: "views-daily", label: "Daily Performance", icon: Calendar },
+      { id: "views-episodes", label: "Episodes", icon: PlaySquare },
       { id: "views-weekly", label: "Weekly Performance", icon: CalendarDays },
       { id: "views-monthly", label: "Monthly Performance", icon: CalendarRange },
     ],
