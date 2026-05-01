@@ -371,10 +371,14 @@ def _transform(
             campaign = row.get("Campaign name", row.get("Campaign", "Unknown"))
             ad_name = campaign
 
-        # Build a friendly display name from ad name
-        # "AG1 - Webflow - Dave Steer" -> "Webflow - Dave Steer"
+        # Skip Google Ads default/placeholder ad names ("Ad #1", "Ad #2" …) that
+        # don't follow the FOM "AG1 - <Company> - <Guest>" convention. They
+        # contribute negligible spend but pollute the per-video table and the
+        # retention chart with a non-episode line.
         parts = ad_name.split(" - ", 1)
-        display_name = parts[1] if len(parts) > 1 else ad_name
+        if len(parts) < 2:
+            continue
+        display_name = parts[1]
 
         if display_name not in episodes:
             episodes[display_name] = {
